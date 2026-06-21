@@ -55,6 +55,33 @@ def _should_skip_row(category: str, config: dict) -> bool:
     return False
 
 
+def _resolve_budget_cents(
+    row: list,
+    config: dict,
+    month_indices: dict[str, int],
+    category_name: str,
+) -> int:
+    budget_col = config.get("budget_column", 15)
+    budget_cents = parse_amount(_cell(row, budget_col))
+    if budget_cents > 0:
+        return budget_cents
+
+    fallback_col = config.get("fallback_budget_column")
+    if fallback_col is not None:
+        budget_cents = parse_amount(_cell(row, fallback_col))
+        if budget_cents > 0:
+            return budget_cents
+
+    prefixes = config.get("investment_budget_prefixes", [])
+    if prefixes and any(category_name.startswith(prefix) for prefix in prefixes):
+        values = [parse_amount(_cell(row, col_idx)) for col_idx in month_indices.values()]
+        values = [value for value in values if value > 0]
+        if values:
+            return int(round(sum(values) / len(values)))
+
+    return 0
+
+
 def parse_monthly_tab(
     tab_name: str,
     rows: list[list],
@@ -179,7 +206,6 @@ def parse_overview_matrix(
                     month_indices[month_name] = i
                     break
 
-    budget_col = config.get("budget_column", 15)
     category_col = config.get("category_column", 0)
     start = config.get("data_start_row", 2)
     results: list[ParsedBudgetRow] = []
@@ -189,7 +215,7 @@ def parse_overview_matrix(
         if _should_skip_row(str(category or ""), config):
             continue
         category_name = str(category).strip()
-        budget_cents = parse_amount(_cell(row, budget_col))
+        budget_cents = _resolve_budget_cents(row, config, month_indices, category_name)
 
         for month_name, col_idx in month_indices.items():
             spent_cents = parse_amount(_cell(row, col_idx))

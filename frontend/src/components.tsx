@@ -12,6 +12,29 @@ interface Props {
   showUsage?: boolean;
 }
 
+function UsageCell({ usagePercent }: { usagePercent: number | null }) {
+  if (usagePercent === null) {
+    return <span className="progress-label">—</span>;
+  }
+  return (
+    <div className="progress-cell">
+      <div className="progress-track">
+        <div
+          className={`progress-fill ${usageClass(usagePercent)}`}
+          style={{ width: `${Math.min(usagePercent, 100)}%` }}
+        />
+        {usagePercent > 100 && (
+          <div
+            className="progress-fill over"
+            style={{ width: `${Math.min(usagePercent - 100, 50)}%` }}
+          />
+        )}
+      </div>
+      <span className="progress-label">{usagePercent} %</span>
+    </div>
+  );
+}
+
 function CategoryRowView({ row, showUsage }: { row: CategoryRow; showUsage: boolean }) {
   return (
     <tr>
@@ -23,23 +46,7 @@ function CategoryRowView({ row, showUsage }: { row: CategoryRow; showUsage: bool
       </td>
       <td>
         {showUsage ? (
-          <div className="progress-cell">
-            <div className="progress-track">
-              <div
-                className={`progress-fill ${usageClass(row.usage_percent)}`}
-                style={{ width: `${Math.min(row.usage_percent ?? 0, 100)}%` }}
-              />
-              {(row.usage_percent ?? 0) > 100 && (
-                <div
-                  className="progress-fill over"
-                  style={{ width: `${Math.min((row.usage_percent ?? 0) - 100, 50)}%` }}
-                />
-              )}
-            </div>
-            <span className="progress-label">
-              {row.usage_percent !== null ? `${row.usage_percent} %` : "—"}
-            </span>
-          </div>
+          <UsageCell usagePercent={row.usage_percent} />
         ) : (
           <span className="progress-label">—</span>
         )}
@@ -66,8 +73,8 @@ function FooterRow({
         {formatEuro(totals.remaining)}
       </td>
       <td>
-        {showUsage && totals.usage_percent !== null ? (
-          <span className="progress-label total-usage">{totals.usage_percent} %</span>
+        {showUsage ? (
+          <UsageCell usagePercent={totals.usage_percent} />
         ) : (
           <span className="progress-label">—</span>
         )}
@@ -145,7 +152,7 @@ export function MonthSelector({ months, current, onChange }: MonthNavProps) {
 
   return (
     <div className="month-nav">
-      <button type="button" onClick={prev} disabled={idx >= months.length - 1} aria-label="Vorheriger Monat">
+      <button type="button" onClick={prev} disabled={idx >= months.length - 1} aria-label="Vorheriger Zeitraum">
         ‹
       </button>
       <select value={current} onChange={(e) => onChange(e.target.value)}>
@@ -155,7 +162,7 @@ export function MonthSelector({ months, current, onChange }: MonthNavProps) {
           </option>
         ))}
       </select>
-      <button type="button" onClick={next} disabled={idx <= 0} aria-label="Nächster Monat">
+      <button type="button" onClick={next} disabled={idx <= 0} aria-label="Nächster Zeitraum">
         ›
       </button>
     </div>

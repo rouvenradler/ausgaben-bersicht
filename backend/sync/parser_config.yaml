@@ -12,6 +12,9 @@ header_row: 1
 year_column: 0
 category_column: 0
 budget_column: 15
+fallback_budget_column: 14
+investment_budget_prefixes:
+  - Geldanlage
 data_start_row: 2
 
 month_columns:

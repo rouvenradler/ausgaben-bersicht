@@ -65,9 +65,29 @@ class Repository:
             rows = conn.execute(
                 "SELECT DISTINCT year_month FROM monthly_budgets ORDER BY year_month DESC"
             ).fetchall()
-            return [row["year_month"] for row in rows]
+            months = [row["year_month"] for row in rows]
 
-    def get_overview(self, year_month: str) -> list[CategoryBudget]:
+        result: list[str] = []
+        years_added: set[str] = set()
+        for entry in months:
+            result.append(entry)
+            if entry.endswith("-01"):
+                year = entry[:4]
+                result.append(year)
+                years_added.add(year)
+
+        for year in sorted({m[:4] for m in months}, reverse=True):
+            if year not in years_added:
+                result.append(year)
+
+        return result
+
+    def get_overview(self, period: str) -> list[CategoryBudget]:
+        if len(period) == 4 and period.isdigit():
+            return self.get_yearly_overview(period)
+        return self._get_monthly_overview(period)
+
+    def _get_monthly_overview(self, year_month: str) -> list[CategoryBudget]:
         with get_connection(self.db_path) as conn:
             rows = conn.execute(
                 """
@@ -80,16 +100,39 @@ class Repository:
                 """,
                 (year_month,),
             ).fetchall()
-            return [
-                CategoryBudget(
-                    category_id=row["category_id"],
-                    category_name=row["category_name"],
-                    sort_order=row["sort_order"],
-                    budget_cents=row["budget_cents"],
-                    spent_cents=row["spent_cents"],
-                )
-                for row in rows
-            ]
+            return self._rows_to_budgets(rows)
+
+    def get_yearly_overview(self, year: str) -> list[CategoryBudget]:
+        with get_connection(self.db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT c.id AS category_id, c.name AS category_name,
+                       MIN(c.sort_order) AS sort_order,
+                       SUM(mb.budget_cents) AS budget_cents,
+                       SUM(mb.spent_cents) AS spent_cents
+                FROM monthly_budgets mb
+                JOIN categories c ON c.id = mb.category_id
+                WHERE mb.year_month LIKE ?
+                GROUP BY c.id, c.name
+                HAVING SUM(mb.budget_cents) > 0 OR SUM(mb.spent_cents) > 0
+                ORDER BY sort_order, c.name
+                """,
+                (f"{year}-%",),
+            ).fetchall()
+            return self._rows_to_budgets(rows)
+
+    @staticmethod
+    def _rows_to_budgets(rows) -> list[CategoryBudget]:
+        return [
+            CategoryBudget(
+                category_id=row["category_id"],
+                category_name=row["category_name"],
+                sort_order=row["sort_order"],
+                budget_cents=row["budget_cents"],
+                spent_cents=row["spent_cents"],
+            )
+            for row in rows
+        ]
 
     def start_sync_run(self) -> int:
         now = datetime.now(timezone.utc).isoformat()

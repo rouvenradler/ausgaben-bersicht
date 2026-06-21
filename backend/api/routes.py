@@ -22,7 +22,8 @@ def get_overview(month: str, request: Request):
     repo: Repository = request.app.state.repo
     rows = repo.get_overview(month)
     if not rows:
-        raise HTTPException(status_code=404, detail=f"No data for month {month}")
+        label = f"Jahr {month}" if month.isdigit() and len(month) == 4 else f"Monat {month}"
+        raise HTTPException(status_code=404, detail=f"No data for {label}")
 
     categories = []
     total_budget = 0

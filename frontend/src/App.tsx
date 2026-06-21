@@ -5,6 +5,7 @@ import {
   fetchSyncStatus,
   formatEuro,
   formatMonthLabel,
+  pickDefaultMonth,
   splitCategories,
   sumCategories,
   triggerSync,
@@ -32,7 +33,7 @@ export default function App() {
       setMonths(monthList);
       const active = selectedMonth && monthList.includes(selectedMonth)
         ? selectedMonth
-        : monthList[0];
+        : pickDefaultMonth(monthList);
       if (!active) {
         setOverview(null);
         setMonth("");
@@ -151,7 +152,6 @@ export default function App() {
               <CategoryTable
                 rows={investments}
                 footerLabel="Summe Geldanlagen"
-                showUsage={false}
               />
             </section>
           )}

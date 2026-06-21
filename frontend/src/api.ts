@@ -63,9 +63,42 @@ export function formatEuro(value: number): string {
 }
 
 export function formatMonthLabel(yearMonth: string): string {
+  if (/^\d{4}$/.test(yearMonth)) {
+    return `Jahr ${yearMonth}`;
+  }
   const [year, month] = yearMonth.split("-");
   const date = new Date(Number(year), Number(month) - 1, 1);
   return date.toLocaleDateString("de-DE", { month: "long", year: "numeric" });
+}
+
+export function isYearPeriod(period: string): boolean {
+  return /^\d{4}$/.test(period);
+}
+
+export function monthPeriodsOnly(months: string[]): string[] {
+  return months.filter((m) => !isYearPeriod(m));
+}
+
+export function currentYearMonth(): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  return `${now.getFullYear()}-${month}`;
+}
+
+/** Bevorzugt den laufenden Kalendermonat, sonst den neuesten verfügbaren Monat bis heute. */
+export function pickDefaultMonth(months: string[]): string | undefined {
+  const monthOnly = monthPeriodsOnly(months);
+  if (monthOnly.length === 0) return undefined;
+
+  const current = currentYearMonth();
+  if (monthOnly.includes(current)) return current;
+
+  const notFuture = monthOnly.filter((m) => m <= current);
+  if (notFuture.length > 0) {
+    return notFuture.sort((a, b) => b.localeCompare(a))[0];
+  }
+
+  return monthOnly[0];
 }
 
 export function usageClass(percent: number | null): string {
