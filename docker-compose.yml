@@ -1,0 +1,18 @@
+services:
+  kontomanager:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+      - ./secrets:/app/secrets:ro
+    environment:
+      SPREADSHEET_ID: ${SPREADSHEET_ID:-1o3NK9Bypgr2NtbwgwMy9kgUpZ9V_tsRX}
+      GOOGLE_APPLICATION_CREDENTIALS: /app/secrets/google-service-account.json
+      DATABASE_PATH: /app/data/kontomanager.db
+      PARSER_CONFIG_PATH: /app/backend/sync/parser_config.yaml
+      SYNC_INTERVAL_MINUTES: ${SYNC_INTERVAL_MINUTES:-30}
+      SYNC_ON_STARTUP: ${SYNC_ON_STARTUP:-true}
+      STATIC_DIR: /app/static
+      USE_SAMPLE_DATA: ${USE_SAMPLE_DATA:-false}
+    restart: unless-stopped

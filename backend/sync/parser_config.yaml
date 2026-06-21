@@ -1,0 +1,47 @@
+# Parser für 2026_Finanzplanung.xlsx
+# Tab "2026": Jahresmatrix mit Kategorien, Monats-Ist (Jan–Dec) und Budget in Spalte "max/m"
+
+mode: overview_matrix
+
+overview_tab_pattern: "^\\d{4}$"
+
+skip_tabs:
+  - Vermögensübersicht
+
+header_row: 1
+year_column: 0
+category_column: 0
+budget_column: 15
+data_start_row: 2
+
+month_columns:
+  Jan: 1
+  Feb: 2
+  Mrz: 3
+  Apr: 4
+  Mai: 5
+  Jun: 6
+  Jul: 7
+  Aug: 8
+  Sep: 9
+  Okt: 10
+  Nov: 11
+  Dec: 12
+
+skip_row_labels:
+  - Summe
+  - Gesamt
+  - Total
+  - ""
+  - Einnahmen
+  - Ausgaben 1
+  - Ausgaben 2
+
+exclude_categories:
+  - Gehalt
+  - Wertpapiere
+  - Zinsen
+  - Aktien
+  - Verkauf
+  - Umbuchung
+  - Haushalt

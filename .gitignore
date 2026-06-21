@@ -1,0 +1,34 @@
+# Secrets (Service Account JSON hier ablegen)
+secrets/
+!secrets/.gitkeep
+**/google-service-account.json
+*.pem
+
+# Daten
+data/
+!data/.gitkeep
+*.db
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Node / Frontend build
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# Build output
+static/
+
+# IDE
+.idea/
+.vscode/
+
+# Generated analysis (kann echte Sheet-Vorschau enthalten)
+docs/sheet_analysis_output.json
