@@ -87,6 +87,15 @@ class Repository:
             return self.get_yearly_overview(period)
         return self._get_monthly_overview(period)
 
+    def get_month_spent(self, year_month: str) -> dict[int, int]:
+        """Ausgaben (cents) je Kategorie für einen einzelnen Monat."""
+        with get_connection(self.db_path) as conn:
+            rows = conn.execute(
+                "SELECT category_id, spent_cents FROM monthly_budgets WHERE year_month = ?",
+                (year_month,),
+            ).fetchall()
+            return {int(r["category_id"]): int(r["spent_cents"]) for r in rows}
+
     def _get_monthly_overview(self, year_month: str) -> list[CategoryBudget]:
         with get_connection(self.db_path) as conn:
             rows = conn.execute(

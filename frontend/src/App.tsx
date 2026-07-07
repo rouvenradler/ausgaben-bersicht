@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  computeForecast,
+  elapsedFraction,
   fetchMonths,
   fetchOverview,
   fetchSyncStatus,
   formatEuro,
   formatMonthLabel,
-  pickDefaultMonth,
+  pickDefaultPeriod,
   splitCategories,
   sumCategories,
   triggerSync,
-  usageClass,
   type Overview,
   type SyncStatus,
 } from "./api";
@@ -33,7 +34,7 @@ export default function App() {
       setMonths(monthList);
       const active = selectedMonth && monthList.includes(selectedMonth)
         ? selectedMonth
-        : pickDefaultMonth(monthList);
+        : pickDefaultPeriod(monthList);
       if (!active) {
         setOverview(null);
         setMonth("");
@@ -84,7 +85,14 @@ export default function App() {
     ? splitCategories(overview.categories)
     : { expenses: [], investments: [] };
   const expenseTotals = sumCategories(expenses);
-  const expenseUsageVariant = usageClass(expenseTotals.usage_percent);
+  const fraction = month ? elapsedFraction(month) : 1;
+  const forecast = computeForecast(month, expenseTotals.spent, expenseTotals.budget);
+  const forecastEuro = formatEuro(forecast.deltaVsBudget);
+  const forecastSub = `${forecast.deltaVsBudget > 0 ? "+" : ""}${forecastEuro}${
+    forecast.deltaPercent !== null
+      ? ` (${forecast.deltaPercent > 0 ? "+" : ""}${forecast.deltaPercent} %)`
+      : ""
+  } ${forecast.over ? "über Budget" : "unter Budget"}`;
 
   return (
     <div className="app">
@@ -125,25 +133,16 @@ export default function App() {
               variant={expenseTotals.remaining < 0 ? "over" : "ok"}
             />
             <KpiCard
-              label="Auslastung"
-              value={
-                expenseTotals.usage_percent !== null
-                  ? `${expenseTotals.usage_percent} %`
-                  : "—"
-              }
-              variant={
-                expenseUsageVariant === "ok" ||
-                expenseUsageVariant === "warn" ||
-                expenseUsageVariant === "over"
-                  ? expenseUsageVariant
-                  : "default"
-              }
+              label={forecast.scope === "year" ? "Prognose Jahresende" : "Prognose Monatsende"}
+              value={formatEuro(forecast.value)}
+              sub={forecastSub}
+              variant={forecast.over ? "over" : "ok"}
             />
           </section>
 
           <section className="panel">
-            <h2>Ausgaben</h2>
-            <CategoryTable rows={expenses} footerLabel="Summe Ausgaben" />
+            <h2>Ausgaben nach Kategorie</h2>
+            <CategoryTable rows={expenses} fraction={fraction} footerLabel="Summe Ausgaben" />
           </section>
 
           {investments.length > 0 && (
@@ -151,6 +150,7 @@ export default function App() {
               <h2>Geldanlagen</h2>
               <CategoryTable
                 rows={investments}
+                fraction={fraction}
                 footerLabel="Summe Geldanlagen"
               />
             </section>

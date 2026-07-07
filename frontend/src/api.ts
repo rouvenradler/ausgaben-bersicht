@@ -1,3 +1,5 @@
+export type Trend = "up" | "down" | "flat";
+
 export interface CategoryRow {
   category_id: number;
   category_name: string;
@@ -5,6 +7,7 @@ export interface CategoryRow {
   spent: number;
   remaining: number;
   usage_percent: number | null;
+  trend?: Trend | null;
 }
 
 export interface Overview {
@@ -85,6 +88,21 @@ export function currentYearMonth(): string {
   return `${now.getFullYear()}-${month}`;
 }
 
+/**
+ * Standard-Zeitraum: bevorzugt das laufende Jahr, sonst das neueste Jahr.
+ * Nur wenn gar keine Jahres-Zeiträume vorhanden sind, wird auf einen Monat
+ * zurückgefallen.
+ */
+export function pickDefaultPeriod(periods: string[]): string | undefined {
+  const years = periods.filter(isYearPeriod);
+  if (years.length > 0) {
+    const currentYear = String(new Date().getFullYear());
+    if (years.includes(currentYear)) return currentYear;
+    return years.sort((a, b) => b.localeCompare(a))[0];
+  }
+  return pickDefaultMonth(periods);
+}
+
 /** Bevorzugt den laufenden Kalendermonat, sonst den neuesten verfügbaren Monat bis heute. */
 export function pickDefaultMonth(months: string[]): string | undefined {
   const monthOnly = monthPeriodsOnly(months);
@@ -106,6 +124,65 @@ export function usageClass(percent: number | null): string {
   if (percent > 100) return "over";
   if (percent >= 80) return "warn";
   return "ok";
+}
+
+export interface Forecast {
+  /** Hochgerechneter Ausgabenwert am Ende des Zeitraums. */
+  value: number;
+  /** Prognose − Budget (positiv = über Budget). */
+  deltaVsBudget: number;
+  /** Abweichung zum Budget in Prozent, null wenn kein Budget. */
+  deltaPercent: number | null;
+  over: boolean;
+  scope: "year" | "month";
+}
+
+/** Start (inkl.) und Ende (exkl.) eines Jahres- oder Monats-Zeitraums. */
+export function periodBounds(period: string): { start: Date; end: Date } {
+  if (isYearPeriod(period)) {
+    const year = Number(period);
+    return { start: new Date(year, 0, 1), end: new Date(year + 1, 0, 1) };
+  }
+  const [y, m] = period.split("-").map(Number);
+  return { start: new Date(y, m - 1, 1), end: new Date(y, m, 1) };
+}
+
+/** Anteil des bereits verstrichenen Zeitraums (0..1). */
+export function elapsedFraction(period: string, now: Date = new Date()): number {
+  const { start, end } = periodBounds(period);
+  const total = end.getTime() - start.getTime();
+  const elapsed = now.getTime() - start.getTime();
+  return Math.min(Math.max(elapsed / total, 0), 1);
+}
+
+/**
+ * Rechnet die bisherigen Ausgaben linear auf das Ende des Zeitraums hoch
+ * (Run-Rate). Bei einem Jahres-Zeitraum ergibt das die Jahresendprognose,
+ * bei einem Monat die Monatsendprognose.
+ */
+export function computeForecast(
+  period: string,
+  spent: number,
+  budget: number,
+  now: Date = new Date(),
+): Forecast {
+  const scope: "year" | "month" = isYearPeriod(period) ? "year" : "month";
+  const fraction = elapsedFraction(period, now);
+
+  let value: number;
+  if (fraction <= 0) {
+    value = budget; // Zeitraum noch nicht begonnen → Budget als Erwartung
+  } else if (fraction >= 1) {
+    value = spent; // Zeitraum abgeschlossen → tatsächliche Ausgaben
+  } else {
+    value = spent / fraction; // lineare Hochrechnung
+  }
+
+  const deltaVsBudget = value - budget;
+  const deltaPercent =
+    budget > 0 ? Math.round((deltaVsBudget / budget) * 1000) / 10 : null;
+
+  return { value, deltaVsBudget, deltaPercent, over: deltaVsBudget > 0, scope };
 }
 
 const INVESTMENT_NAMES = new Set(["Geldanlage Rouven", "Geldanlage Lena"]);
