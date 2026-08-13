@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   computeForecast,
   elapsedFraction,
@@ -7,40 +7,66 @@ import {
   fetchSyncStatus,
   formatEuro,
   formatMonthLabel,
+  isYearPeriod,
+  monthPeriodsOnly,
+  periodsForScope,
   pickDefaultPeriod,
+  pickPeriodForScope,
+  yearPeriodsOnly,
   splitCategories,
   sumCategories,
   triggerSync,
   type Overview,
+  type PeriodScope,
   type SyncStatus,
 } from "./api";
-import { CategoryTable, KpiCard, MonthSelector } from "./components";
+import { CategoryTable, KpiCard, MonthSelector, ScopeToggle } from "./components";
 
 export default function App() {
-  const [months, setMonths] = useState<string[]>([]);
-  const [month, setMonth] = useState<string>("");
+  const [periods, setPeriods] = useState<string[]>([]);
+  const [period, setPeriod] = useState<string>("");
+  const [scope, setScope] = useState<PeriodScope>("year");
   const [overview, setOverview] = useState<Overview | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadData = useCallback(async (selectedMonth?: string) => {
+  const scopedPeriods = useMemo(
+    () => periodsForScope(periods, scope),
+    [periods, scope],
+  );
+  const hasMonths = useMemo(() => monthPeriodsOnly(periods).length > 0, [periods]);
+  const hasYears = useMemo(() => yearPeriodsOnly(periods).length > 0, [periods]);
+
+  const loadData = useCallback(async (selectedPeriod?: string, preferredScope?: PeriodScope) => {
     setLoading(true);
     setError(null);
     try {
-      const [monthList, status] = await Promise.all([fetchMonths(), fetchSyncStatus()]);
+      const [periodList, status] = await Promise.all([fetchMonths(), fetchSyncStatus()]);
       setSyncStatus(status);
-      setMonths(monthList);
-      const active = selectedMonth && monthList.includes(selectedMonth)
-        ? selectedMonth
-        : pickDefaultPeriod(monthList);
+      setPeriods(periodList);
+
+      const nextScope =
+        preferredScope ??
+        (selectedPeriod
+          ? isYearPeriod(selectedPeriod)
+            ? "year"
+            : "month"
+          : "year");
+      setScope(nextScope);
+
+      const active =
+        selectedPeriod && periodList.includes(selectedPeriod)
+          ? selectedPeriod
+          : pickPeriodForScope(periodList, nextScope) ?? pickDefaultPeriod(periodList);
+
       if (!active) {
         setOverview(null);
-        setMonth("");
+        setPeriod("");
         return;
       }
-      setMonth(active);
+      setPeriod(active);
       const data = await fetchOverview(active);
       setOverview(data);
     } catch (e) {
@@ -54,8 +80,8 @@ export default function App() {
     loadData();
   }, [loadData]);
 
-  const onMonthChange = async (next: string) => {
-    setMonth(next);
+  const onPeriodChange = async (next: string) => {
+    setPeriod(next);
     setLoading(true);
     setError(null);
     try {
@@ -68,12 +94,20 @@ export default function App() {
     }
   };
 
+  const onScopeChange = async (nextScope: PeriodScope) => {
+    if (nextScope === scope) return;
+    const next = pickPeriodForScope(periods, nextScope, period);
+    if (!next) return;
+    setScope(nextScope);
+    await onPeriodChange(next);
+  };
+
   const onSync = async () => {
     setSyncing(true);
     setError(null);
     try {
       await triggerSync();
-      await loadData(month);
+      await loadData(period, scope);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sync fehlgeschlagen");
     } finally {
@@ -85,8 +119,8 @@ export default function App() {
     ? splitCategories(overview.categories)
     : { expenses: [], investments: [] };
   const expenseTotals = sumCategories(expenses);
-  const fraction = month ? elapsedFraction(month) : 1;
-  const forecast = computeForecast(month, expenseTotals.spent, expenseTotals.budget);
+  const fraction = period ? elapsedFraction(period) : 1;
+  const forecast = computeForecast(period, expenseTotals.spent, expenseTotals.budget);
   const forecastEuro = formatEuro(forecast.deltaVsBudget);
   const forecastSub = `${forecast.deltaVsBudget > 0 ? "+" : ""}${forecastEuro}${
     forecast.deltaPercent !== null
@@ -100,12 +134,24 @@ export default function App() {
         <div>
           <h1>Kontomanager</h1>
           <p className="subtitle">
-            {month ? formatMonthLabel(month) : "Finanzübersicht"}
+            {period ? formatMonthLabel(period) : "Finanzübersicht"}
           </p>
         </div>
         <div className="header-actions">
-          {months.length > 0 && (
-            <MonthSelector months={months} current={month} onChange={onMonthChange} />
+          {(hasMonths || hasYears) && (
+            <ScopeToggle
+              scope={scope}
+              onChange={onScopeChange}
+              hasMonths={hasMonths}
+              hasYears={hasYears}
+            />
+          )}
+          {scopedPeriods.length > 0 && period && (
+            <MonthSelector
+              months={scopedPeriods}
+              current={period}
+              onChange={onPeriodChange}
+            />
           )}
           <button type="button" className="sync-btn" onClick={onSync} disabled={syncing}>
             {syncing ? "Sync …" : "Jetzt syncen"}
@@ -142,7 +188,12 @@ export default function App() {
 
           <section className="panel">
             <h2>Ausgaben nach Kategorie</h2>
-            <CategoryTable rows={expenses} fraction={fraction} footerLabel="Summe Ausgaben" />
+            <CategoryTable
+              rows={expenses}
+              fraction={fraction}
+              isYearView={isYearPeriod(period)}
+              footerLabel="Summe Ausgaben"
+            />
           </section>
 
           {investments.length > 0 && (
@@ -151,6 +202,7 @@ export default function App() {
               <CategoryTable
                 rows={investments}
                 fraction={fraction}
+                isYearView={isYearPeriod(period)}
                 footerLabel="Summe Geldanlagen"
               />
             </section>

@@ -3,6 +3,7 @@ import {
   formatMonthLabel,
   usageClass,
   type CategoryRow,
+  type PeriodScope,
   type Trend,
 } from "./api";
 
@@ -10,6 +11,8 @@ interface Props {
   rows: CategoryRow[];
   /** Anteil des bereits verstrichenen Zeitraums (0..1) für die SOLL-Berechnung. */
   fraction: number;
+  /** true = Jahresübersicht → Spalte „Soll (Jahr)“, sonst „Soll (Monat)“. */
+  isYearView?: boolean;
   footerLabel?: string;
 }
 
@@ -110,6 +113,7 @@ function CategoryRowView({
         <span className="cat-dot" style={{ backgroundColor: color }} />
         {row.category_name}
       </td>
+      <td className="num budget">{formatEuro(row.budget)}</td>
       <td className="num">{formatEuro(row.spent)}</td>
       <td className="num soll">{formatEuro(soll)}</td>
       <AbwCell value={abw} />
@@ -124,13 +128,19 @@ function CategoryRowView({
   );
 }
 
-export function CategoryTable({ rows, fraction, footerLabel = "Summe" }: Props) {
+export function CategoryTable({
+  rows,
+  fraction,
+  isYearView = true,
+  footerLabel = "Summe",
+}: Props) {
   const budget = rows.reduce((s, r) => s + r.budget, 0);
   const spent = rows.reduce((s, r) => s + r.spent, 0);
   const remaining = budget - spent;
   const soll = budget * fraction;
   const abw = spent - soll;
   const usagePercent = budget > 0 ? Math.round((spent / budget) * 1000) / 10 : null;
+  const periodSollLabel = isYearView ? "Soll (Jahr)" : "Soll (Monat)";
 
   return (
     <div className="table-wrap">
@@ -138,6 +148,7 @@ export function CategoryTable({ rows, fraction, footerLabel = "Summe" }: Props) 
         <thead>
           <tr>
             <th>Kategorie</th>
+            <th className="num">{periodSollLabel}</th>
             <th className="num">Ist (YTD)</th>
             <th className="num">Soll (YTD)</th>
             <th className="num">Abw.</th>
@@ -160,6 +171,7 @@ export function CategoryTable({ rows, fraction, footerLabel = "Summe" }: Props) 
           <tfoot>
             <tr className="total-row">
               <td className="cat-name">{footerLabel}</td>
+              <td className="num budget">{formatEuro(budget)}</td>
               <td className="num">{formatEuro(spent)}</td>
               <td className="num soll">{formatEuro(soll)}</td>
               <AbwCell value={abw} />
@@ -191,6 +203,43 @@ export function KpiCard({ label, value, sub, variant = "default" }: KpiProps) {
       <span className="kpi-label">{label}</span>
       <span className="kpi-value">{value}</span>
       {sub && <span className="kpi-sub">{sub}</span>}
+    </div>
+  );
+}
+
+interface ScopeToggleProps {
+  scope: PeriodScope;
+  onChange: (scope: PeriodScope) => void;
+  hasMonths?: boolean;
+  hasYears?: boolean;
+}
+
+export function ScopeToggle({
+  scope,
+  onChange,
+  hasMonths = true,
+  hasYears = true,
+}: ScopeToggleProps) {
+  return (
+    <div className="scope-toggle" role="group" aria-label="Zeitraum">
+      <button
+        type="button"
+        className={scope === "month" ? "active" : ""}
+        aria-pressed={scope === "month"}
+        disabled={!hasMonths}
+        onClick={() => onChange("month")}
+      >
+        Monat
+      </button>
+      <button
+        type="button"
+        className={scope === "year" ? "active" : ""}
+        aria-pressed={scope === "year"}
+        disabled={!hasYears}
+        onClick={() => onChange("year")}
+      >
+        Jahr
+      </button>
     </div>
   );
 }

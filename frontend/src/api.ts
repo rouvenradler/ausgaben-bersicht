@@ -74,12 +74,63 @@ export function formatMonthLabel(yearMonth: string): string {
   return date.toLocaleDateString("de-DE", { month: "long", year: "numeric" });
 }
 
+export type PeriodScope = "month" | "year";
+
 export function isYearPeriod(period: string): boolean {
   return /^\d{4}$/.test(period);
 }
 
 export function monthPeriodsOnly(months: string[]): string[] {
   return months.filter((m) => !isYearPeriod(m));
+}
+
+export function yearPeriodsOnly(periods: string[]): string[] {
+  return periods.filter(isYearPeriod).sort((a, b) => b.localeCompare(a));
+}
+
+/** Periodenliste für den aktiven Scope (Monate bzw. Jahre). */
+export function periodsForScope(periods: string[], scope: PeriodScope): string[] {
+  return scope === "year" ? yearPeriodsOnly(periods) : monthPeriodsOnly(periods);
+}
+
+/**
+ * Wählt beim Scope-Wechsel einen sinnvollen Zeitraum:
+ * Jahr ← Monat: Jahr des aktuellen Monats; Monat ← Jahr: laufender Monat in dem Jahr, sonst neuester Monat.
+ */
+export function pickPeriodForScope(
+  periods: string[],
+  scope: PeriodScope,
+  current?: string,
+): string | undefined {
+  const list = periodsForScope(periods, scope);
+  if (list.length === 0) return undefined;
+
+  if (scope === "year") {
+    if (current && isYearPeriod(current) && list.includes(current)) return current;
+    if (current && !isYearPeriod(current)) {
+      const year = current.slice(0, 4);
+      if (list.includes(year)) return year;
+    }
+    return pickDefaultYear(list);
+  }
+
+  if (current && !isYearPeriod(current) && list.includes(current)) return current;
+  if (current && isYearPeriod(current)) {
+    const inYear = list.filter((m) => m.startsWith(`${current}-`));
+    if (inYear.length > 0) {
+      const preferred = `${current}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+      if (inYear.includes(preferred)) return preferred;
+      return inYear.sort((a, b) => b.localeCompare(a))[0];
+    }
+  }
+  return pickDefaultMonth(list);
+}
+
+export function pickDefaultYear(years: string[]): string | undefined {
+  if (years.length === 0) return undefined;
+  const currentYear = String(new Date().getFullYear());
+  if (years.includes(currentYear)) return currentYear;
+  return [...years].sort((a, b) => b.localeCompare(a))[0];
 }
 
 export function currentYearMonth(): string {
@@ -94,13 +145,7 @@ export function currentYearMonth(): string {
  * zurückgefallen.
  */
 export function pickDefaultPeriod(periods: string[]): string | undefined {
-  const years = periods.filter(isYearPeriod);
-  if (years.length > 0) {
-    const currentYear = String(new Date().getFullYear());
-    if (years.includes(currentYear)) return currentYear;
-    return years.sort((a, b) => b.localeCompare(a))[0];
-  }
-  return pickDefaultMonth(periods);
+  return pickDefaultYear(yearPeriodsOnly(periods)) ?? pickDefaultMonth(periods);
 }
 
 /** Bevorzugt den laufenden Kalendermonat, sonst den neuesten verfügbaren Monat bis heute. */
