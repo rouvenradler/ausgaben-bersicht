@@ -1,6 +1,6 @@
 # Kontomanager
 
-Finanz-Dashboard für den Raspberry Pi: Monatsübersicht mit Budget vs. Ist pro Kategorie, synchronisiert aus einer Excel-Datei auf Google Drive (oder nativem Google Sheet).
+Finanz-Dashboard für den Raspberry Pi: Monats- und Jahresübersicht mit Budget vs. Ist pro Kategorie, synchronisiert aus einer Excel-Datei auf Google Drive (oder nativem Google Sheet).
 
 ## Voraussetzungen
 
@@ -23,7 +23,7 @@ Google Drive / Sheet  →  Sync-Worker  →  Parser  →  SQLite  →  REST-API 
 ```
 
 1. Der **Sync-Worker** lädt die Excel- oder Sheet-Datei über die Google APIs herunter.
-2. Der **Parser** (`backend/sync/parser_config.yaml`) extrahiert Budget und Ist-Ausgaben pro Kategorie und Monat.
+2. Der **Parser** (`backend/sync/parser_config.yaml`) extrahiert Budget, Ist-Ausgaben und die Summenzeile **Einnahmen** pro Monat.
 3. Die Daten landen in **SQLite** (`data/kontomanager.db`).
 4. **FastAPI** stellt die REST-API bereit und liefert im Produktionsmodus das gebaute Frontend aus `static/`.
 5. **APScheduler** startet beim Hochfahren einen Sync und wiederholt ihn danach periodisch (Standard: alle 30 Minuten).
@@ -51,11 +51,23 @@ Kontomanager/
 
 ## Funktionen (UI)
 
-- Monats- und Jahresübersicht (Budget vs. Ist pro Kategorie)
-- KPI-Karten mit Gesamtbudget, Ausgaben und Rest
-- Verbrauch in Prozent pro Kategorie
-- Trend-Indikatoren (hoch / runter / gleichbleibend vs. Vormonat)
+- **Monat / Jahr-Umschalter** — Selektor zeigt nur Monate bzw. nur Jahre aus der Excel
+- Standardstart auf der **Jahresübersicht**; Monate bei Bedarf wählbar
+- KPI-Karten: Budget, Ausgegeben, Verbleibend, **Einnahmen** (aus Excel-Zeile „Einnahmen“)
+- Kategorie-Tabelle mit Soll (Jahr/Monat), Ist, anteiligem Soll (YTD), Abweichung, Rest, Auslastung und Trend
+- Getrennte Tabelle für **Geldanlagen**
+- **Klick auf eine Kategorie** → Balkendiagramm mit Ausgaben Jan–Dez (unter den Tabellen)
 - Manueller Sync-Trigger in der Oberfläche
+
+### Kennzahlen kurz erklärt
+
+| Spalte / KPI | Bedeutung |
+|--------------|-----------|
+| Soll (Jahr/Monat) | Budget aus der Excel für den Zeitraum |
+| Ist (YTD) | Bisherige Ausgaben (im Monat = Monats-Ist, im Jahr = Jahressumme) |
+| Soll (YTD) | Anteiliges Budget: `Budget × verstrichener Zeitanteil` |
+| Abw. | `Ist − Soll (YTD)` (grün unter Plan, rot über Plan) |
+| Einnahmen | Summe der Excel-Zeile „Einnahmen“ für Monat bzw. Jahr |
 
 ## Google Cloud Setup (Service Account)
 
@@ -88,6 +100,11 @@ cp .env.example .env
 | `USE_SAMPLE_DATA` | Beispieldaten ohne Google-Credentials | `false` |
 
 Sheet-Struktur und Parser: siehe [docs/SHEET_STRUCTURE.md](docs/SHEET_STRUCTURE.md)
+
+In `backend/sync/parser_config.yaml` steuern u. a.:
+- `income_row_labels` — Zeilen, die als **Einnahmen**-KPI gelten (Standard: `Einnahmen`)
+- `exclude_categories` / `skip_row_labels` — Zeilen, die nicht als Ausgaben erscheinen
+- `investment_budget_prefixes` — Kategorien für die Geldanlagen-Tabelle (z. B. `Geldanlage`)
 
 Nach dem Teilen des Sheets:
 
@@ -190,9 +207,9 @@ Volumes:
 | Endpoint | Beschreibung |
 |----------|--------------|
 | `GET /api/months` | Verfügbare Monate und Jahre |
-| `GET /api/overview?month=2025-06` | Budget-Übersicht für einen Monat |
-| `GET /api/overview?month=2025` | Budget-Übersicht für ein ganzes Jahr |
-| `GET /api/categories/{id}/monthly?year=2026` | Monatsverlauf einer Kategorie |
+| `GET /api/overview?month=2025-06` | Übersicht für einen Monat (inkl. `income`) |
+| `GET /api/overview?month=2025` | Übersicht für ein ganzes Jahr (inkl. `income`) |
+| `GET /api/categories/{id}/monthly?year=2026` | Monatsverlauf einer Kategorie (Jan–Dez) |
 | `GET /api/sync/status` | Letzter Sync |
 | `POST /api/sync/trigger` | Manueller Sync |
 
