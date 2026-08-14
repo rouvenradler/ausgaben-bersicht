@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  computeForecast,
   elapsedFraction,
+  fetchCategoryMonthly,
   fetchMonths,
   fetchOverview,
   fetchSyncStatus,
@@ -16,11 +16,19 @@ import {
   splitCategories,
   sumCategories,
   triggerSync,
+  type CategoryMonthlySeries,
+  type CategoryRow,
   type Overview,
   type PeriodScope,
   type SyncStatus,
 } from "./api";
-import { CategoryTable, KpiCard, MonthSelector, ScopeToggle } from "./components";
+import {
+  CategoryMonthlyChart,
+  CategoryTable,
+  KpiCard,
+  MonthSelector,
+  ScopeToggle,
+} from "./components";
 
 export default function App() {
   const [periods, setPeriods] = useState<string[]>([]);
@@ -32,12 +40,36 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
+  const [selectedColor, setSelectedColor] = useState("#3b82f6");
+  const [monthlySeries, setMonthlySeries] = useState<CategoryMonthlySeries | null>(null);
+  const [chartLoading, setChartLoading] = useState(false);
+  const [chartError, setChartError] = useState<string | null>(null);
+
   const scopedPeriods = useMemo(
     () => periodsForScope(periods, scope),
     [periods, scope],
   );
   const hasMonths = useMemo(() => monthPeriodsOnly(periods).length > 0, [periods]);
   const hasYears = useMemo(() => yearPeriodsOnly(periods).length > 0, [periods]);
+
+  const chartYear = period ? (isYearPeriod(period) ? period : period.slice(0, 4)) : "";
+  const highlightMonth = period && !isYearPeriod(period) ? period : null;
+
+  const loadCategoryChart = useCallback(async (categoryId: number, year: string) => {
+    if (!year) return;
+    setChartLoading(true);
+    setChartError(null);
+    try {
+      const series = await fetchCategoryMonthly(categoryId, year);
+      setMonthlySeries(series);
+    } catch (e) {
+      setMonthlySeries(null);
+      setChartError(e instanceof Error ? e.message : "Monatsverlauf nicht verfügbar");
+    } finally {
+      setChartLoading(false);
+    }
+  }, []);
 
   const loadData = useCallback(async (selectedPeriod?: string, preferredScope?: PeriodScope) => {
     setLoading(true);
@@ -80,6 +112,12 @@ export default function App() {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    if (selectedCategoryId != null && chartYear) {
+      void loadCategoryChart(selectedCategoryId, chartYear);
+    }
+  }, [selectedCategoryId, chartYear, loadCategoryChart]);
+
   const onPeriodChange = async (next: string) => {
     setPeriod(next);
     setLoading(true);
@@ -108,6 +146,9 @@ export default function App() {
     try {
       await triggerSync();
       await loadData(period, scope);
+      if (selectedCategoryId != null && chartYear) {
+        await loadCategoryChart(selectedCategoryId, chartYear);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sync fehlgeschlagen");
     } finally {
@@ -115,18 +156,29 @@ export default function App() {
     }
   };
 
+  const onSelectCategory = (row: CategoryRow, color: string) => {
+    if (selectedCategoryId === row.category_id) {
+      setSelectedCategoryId(null);
+      setMonthlySeries(null);
+      setChartError(null);
+      return;
+    }
+    setSelectedCategoryId(row.category_id);
+    setSelectedColor(color);
+  };
+
+  const onCloseChart = () => {
+    setSelectedCategoryId(null);
+    setMonthlySeries(null);
+    setChartError(null);
+  };
+
   const { expenses, investments } = overview
     ? splitCategories(overview.categories)
     : { expenses: [], investments: [] };
   const expenseTotals = sumCategories(expenses);
   const fraction = period ? elapsedFraction(period) : 1;
-  const forecast = computeForecast(period, expenseTotals.spent, expenseTotals.budget);
-  const forecastEuro = formatEuro(forecast.deltaVsBudget);
-  const forecastSub = `${forecast.deltaVsBudget > 0 ? "+" : ""}${forecastEuro}${
-    forecast.deltaPercent !== null
-      ? ` (${forecast.deltaPercent > 0 ? "+" : ""}${forecast.deltaPercent} %)`
-      : ""
-  } ${forecast.over ? "über Budget" : "unter Budget"}`;
+  const income = overview?.income ?? 0;
 
   return (
     <div className="app">
@@ -176,23 +228,26 @@ export default function App() {
             <KpiCard
               label="Verbleibend"
               value={formatEuro(expenseTotals.remaining)}
-              variant={expenseTotals.remaining < 0 ? "over" : "ok"}
+              variant={expenseTotals.remaining < 0 ? "over" : "default"}
             />
             <KpiCard
-              label={forecast.scope === "year" ? "Prognose Jahresende" : "Prognose Monatsende"}
-              value={formatEuro(forecast.value)}
-              sub={forecastSub}
-              variant={forecast.over ? "over" : "ok"}
+              label="Einnahmen"
+              value={formatEuro(income)}
+              sub={isYearPeriod(period) ? "Summe im Jahr" : "Summe im Monat"}
+              variant="ok"
             />
           </section>
 
           <section className="panel">
             <h2>Ausgaben nach Kategorie</h2>
+            <p className="panel-hint">Kategorie anklicken für Monatsverlauf</p>
             <CategoryTable
               rows={expenses}
               fraction={fraction}
               isYearView={isYearPeriod(period)}
               footerLabel="Summe Ausgaben"
+              selectedCategoryId={selectedCategoryId}
+              onSelectCategory={onSelectCategory}
             />
           </section>
 
@@ -204,8 +259,32 @@ export default function App() {
                 fraction={fraction}
                 isYearView={isYearPeriod(period)}
                 footerLabel="Summe Geldanlagen"
+                selectedCategoryId={selectedCategoryId}
+                onSelectCategory={onSelectCategory}
               />
             </section>
+          )}
+
+          {selectedCategoryId != null && (monthlySeries || chartLoading || chartError) && (
+            <CategoryMonthlyChart
+              series={
+                monthlySeries ?? {
+                  category_id: selectedCategoryId,
+                  category_name: "…",
+                  year: chartYear,
+                  months: Array.from({ length: 12 }, (_, i) => ({
+                    year_month: `${chartYear}-${String(i + 1).padStart(2, "0")}`,
+                    budget: 0,
+                    spent: 0,
+                  })),
+                }
+              }
+              color={selectedColor}
+              highlightMonth={highlightMonth}
+              loading={chartLoading && !monthlySeries}
+              error={chartError}
+              onClose={onCloseChart}
+            />
           )}
         </>
       ) : (

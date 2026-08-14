@@ -192,6 +192,7 @@ Volumes:
 | `GET /api/months` | Verfügbare Monate und Jahre |
 | `GET /api/overview?month=2025-06` | Budget-Übersicht für einen Monat |
 | `GET /api/overview?month=2025` | Budget-Übersicht für ein ganzes Jahr |
+| `GET /api/categories/{id}/monthly?year=2026` | Monatsverlauf einer Kategorie |
 | `GET /api/sync/status` | Letzter Sync |
 | `POST /api/sync/trigger` | Manueller Sync |
 

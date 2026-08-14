@@ -36,9 +36,12 @@ skip_row_labels:
   - Gesamt
   - Total
   - ""
-  - Einnahmen
   - Ausgaben 1
   - Ausgaben 2
+
+# Summenzeile „Einnahmen“ aus der Excel-Matrix (wird als KPI gespeichert, nicht in der Ausgabentabelle)
+income_row_labels:
+  - Einnahmen
 
 exclude_categories:
   - Gehalt

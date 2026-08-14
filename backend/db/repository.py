@@ -130,6 +130,46 @@ class Repository:
             ).fetchall()
             return self._rows_to_budgets(rows)
 
+    def get_category_monthly_series(self, category_id: int, year: str) -> dict | None:
+        """Monatswerte (Budget/Ist) einer Kategorie für ein Kalenderjahr."""
+        with get_connection(self.db_path) as conn:
+            cat = conn.execute(
+                "SELECT id, name FROM categories WHERE id = ?",
+                (category_id,),
+            ).fetchone()
+            if not cat:
+                return None
+
+            rows = conn.execute(
+                """
+                SELECT year_month, budget_cents, spent_cents
+                FROM monthly_budgets
+                WHERE category_id = ? AND year_month LIKE ?
+                ORDER BY year_month
+                """,
+                (category_id, f"{year}-%"),
+            ).fetchall()
+
+        by_month = {row["year_month"]: row for row in rows}
+        months = []
+        for month_num in range(1, 13):
+            ym = f"{year}-{month_num:02d}"
+            row = by_month.get(ym)
+            months.append(
+                {
+                    "year_month": ym,
+                    "budget_cents": int(row["budget_cents"]) if row else 0,
+                    "spent_cents": int(row["spent_cents"]) if row else 0,
+                }
+            )
+
+        return {
+            "category_id": int(cat["id"]),
+            "category_name": cat["name"],
+            "year": year,
+            "months": months,
+        }
+
     @staticmethod
     def _rows_to_budgets(rows) -> list[CategoryBudget]:
         return [

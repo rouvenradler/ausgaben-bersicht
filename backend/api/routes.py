@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from datetime import date
+from pathlib import Path
 
+import yaml
 from fastapi import APIRouter, HTTPException, Request
 
 from backend.db.repository import Repository
@@ -11,10 +13,25 @@ router = APIRouter(prefix="/api")
 # Kategorien mit einer Ausgabenänderung unterhalb dieser Schwelle (relativ zum
 # größeren der beiden Monatswerte) gelten als "gleichbleibend".
 _TREND_THRESHOLD = 0.05
+_DEFAULT_INCOME_LABELS = frozenset({"Einnahmen"})
 
 
 def _format_cents(cents: int) -> float:
     return round(cents / 100, 2)
+
+
+def _income_labels(request: Request) -> frozenset[str]:
+    settings = request.app.state.settings
+    path = Path(settings.parser_config_path)
+    if not path.exists():
+        return _DEFAULT_INCOME_LABELS
+    try:
+        with path.open(encoding="utf-8") as f:
+            config = yaml.safe_load(f) or {}
+        labels = config.get("income_row_labels") or list(_DEFAULT_INCOME_LABELS)
+        return frozenset(str(label) for label in labels)
+    except Exception:
+        return _DEFAULT_INCOME_LABELS
 
 
 def _trend_reference_months(repo: Repository, period: str) -> tuple[str | None, str | None]:
@@ -75,11 +92,16 @@ def get_overview(month: str, request: Request):
         raise HTTPException(status_code=404, detail=f"No data for {label}")
 
     trends = _compute_trends(repo, month)
+    income_labels = _income_labels(request)
 
     categories = []
     total_budget = 0
     total_spent = 0
+    income_cents = 0
     for row in rows:
+        if row.category_name in income_labels:
+            income_cents += row.spent_cents
+            continue
         total_budget += row.budget_cents
         total_spent += row.spent_cents
         categories.append(
@@ -96,6 +118,7 @@ def get_overview(month: str, request: Request):
 
     return {
         "month": month,
+        "income": _format_cents(income_cents),
         "totals": {
             "budget": _format_cents(total_budget),
             "spent": _format_cents(total_spent),
@@ -103,6 +126,30 @@ def get_overview(month: str, request: Request):
             "usage_percent": round(total_spent / total_budget * 100, 1) if total_budget else None,
         },
         "categories": categories,
+    }
+
+
+@router.get("/categories/{category_id}/monthly")
+def category_monthly(category_id: int, year: str, request: Request):
+    if not (len(year) == 4 and year.isdigit()):
+        raise HTTPException(status_code=400, detail="year must be YYYY")
+    repo: Repository = request.app.state.repo
+    series = repo.get_category_monthly_series(category_id, year)
+    if not series:
+        raise HTTPException(status_code=404, detail="Category not found")
+
+    return {
+        "category_id": series["category_id"],
+        "category_name": series["category_name"],
+        "year": series["year"],
+        "months": [
+            {
+                "year_month": m["year_month"],
+                "budget": _format_cents(m["budget_cents"]),
+                "spent": _format_cents(m["spent_cents"]),
+            }
+            for m in series["months"]
+        ],
     }
 
 

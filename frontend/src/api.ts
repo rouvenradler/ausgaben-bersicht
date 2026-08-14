@@ -12,6 +12,8 @@ export interface CategoryRow {
 
 export interface Overview {
   month: string;
+  /** Summe der Excel-Zeile „Einnahmen“ für den gewählten Zeitraum. */
+  income?: number;
   totals: {
     budget: number;
     spent: number;
@@ -41,6 +43,30 @@ export async function fetchMonths(): Promise<string[]> {
 export async function fetchOverview(month: string): Promise<Overview> {
   const res = await fetch(`${API}/overview?month=${encodeURIComponent(month)}`);
   if (!res.ok) throw new Error("Übersicht konnte nicht geladen werden");
+  return res.json();
+}
+
+export interface CategoryMonthPoint {
+  year_month: string;
+  budget: number;
+  spent: number;
+}
+
+export interface CategoryMonthlySeries {
+  category_id: number;
+  category_name: string;
+  year: string;
+  months: CategoryMonthPoint[];
+}
+
+export async function fetchCategoryMonthly(
+  categoryId: number,
+  year: string,
+): Promise<CategoryMonthlySeries> {
+  const res = await fetch(
+    `${API}/categories/${categoryId}/monthly?year=${encodeURIComponent(year)}`,
+  );
+  if (!res.ok) throw new Error("Monatsverlauf konnte nicht geladen werden");
   return res.json();
 }
 
@@ -231,11 +257,15 @@ export function computeForecast(
 }
 
 const INVESTMENT_NAMES = new Set(["Geldanlage Rouven", "Geldanlage Lena"]);
+const INCOME_NAMES = new Set(["Einnahmen"]);
 
 export function splitCategories(categories: CategoryRow[]) {
   const expenses: CategoryRow[] = [];
   const investments: CategoryRow[] = [];
   for (const row of categories) {
+    if (INCOME_NAMES.has(row.category_name)) {
+      continue;
+    }
     if (INVESTMENT_NAMES.has(row.category_name)) {
       investments.push(row);
     } else {

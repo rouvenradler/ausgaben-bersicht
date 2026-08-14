@@ -2,6 +2,7 @@ import {
   formatEuro,
   formatMonthLabel,
   usageClass,
+  type CategoryMonthlySeries,
   type CategoryRow,
   type PeriodScope,
   type Trend,
@@ -14,9 +15,11 @@ interface Props {
   /** true = Jahresübersicht → Spalte „Soll (Jahr)“, sonst „Soll (Monat)“. */
   isYearView?: boolean;
   footerLabel?: string;
+  selectedCategoryId?: number | null;
+  onSelectCategory?: (row: CategoryRow, color: string) => void;
 }
 
-const CATEGORY_COLORS = [
+export const CATEGORY_COLORS = [
   "#ef4444",
   "#f97316",
   "#eab308",
@@ -33,7 +36,7 @@ const CATEGORY_COLORS = [
   "#10b981",
 ];
 
-function categoryColor(index: number): string {
+export function categoryColor(index: number): string {
   return CATEGORY_COLORS[index % CATEGORY_COLORS.length];
 }
 
@@ -96,19 +99,47 @@ function TrendCell({ trend }: { trend?: Trend | null }) {
   );
 }
 
+function shortMonthLabel(yearMonth: string): string {
+  const [year, month] = yearMonth.split("-").map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString("de-DE", { month: "short" });
+}
+
 function CategoryRowView({
   row,
   color,
   fraction,
+  selected,
+  onSelect,
 }: {
   row: CategoryRow;
   color: string;
   fraction: number;
+  selected: boolean;
+  onSelect?: () => void;
 }) {
   const soll = row.budget * fraction;
   const abw = row.spent - soll;
+  const interactive = Boolean(onSelect);
   return (
-    <tr>
+    <tr
+      className={[interactive ? "category-row-clickable" : "", selected ? "selected" : ""]
+        .filter(Boolean)
+        .join(" ")}
+      onClick={onSelect}
+      onKeyDown={
+        onSelect
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onSelect();
+              }
+            }
+          : undefined
+      }
+      tabIndex={interactive ? 0 : undefined}
+      role={interactive ? "button" : undefined}
+      aria-pressed={interactive ? selected : undefined}
+    >
       <td className="cat-name">
         <span className="cat-dot" style={{ backgroundColor: color }} />
         {row.category_name}
@@ -133,6 +164,8 @@ export function CategoryTable({
   fraction,
   isYearView = true,
   footerLabel = "Summe",
+  selectedCategoryId = null,
+  onSelectCategory,
 }: Props) {
   const budget = rows.reduce((s, r) => s + r.budget, 0);
   const spent = rows.reduce((s, r) => s + r.spent, 0);
@@ -158,14 +191,21 @@ export function CategoryTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, i) => (
-            <CategoryRowView
-              key={row.category_id}
-              row={row}
-              color={categoryColor(i)}
-              fraction={fraction}
-            />
-          ))}
+          {rows.map((row, i) => {
+            const color = categoryColor(i);
+            return (
+              <CategoryRowView
+                key={row.category_id}
+                row={row}
+                color={color}
+                fraction={fraction}
+                selected={selectedCategoryId === row.category_id}
+                onSelect={
+                  onSelectCategory ? () => onSelectCategory(row, color) : undefined
+                }
+              />
+            );
+          })}
         </tbody>
         {rows.length > 0 && (
           <tfoot>
@@ -187,6 +227,96 @@ export function CategoryTable({
         )}
       </table>
     </div>
+  );
+}
+
+interface ChartProps {
+  series: CategoryMonthlySeries;
+  color: string;
+  highlightMonth?: string | null;
+  loading?: boolean;
+  error?: string | null;
+  onClose: () => void;
+}
+
+export function CategoryMonthlyChart({
+  series,
+  color,
+  highlightMonth = null,
+  loading = false,
+  error = null,
+  onClose,
+}: ChartProps) {
+  const maxValue = Math.max(
+    ...series.months.map((m) => Math.max(m.spent, m.budget)),
+    1,
+  );
+
+  return (
+    <section className="panel chart-panel">
+      <div className="chart-header">
+        <div>
+          <h2>
+            <span className="cat-dot" style={{ backgroundColor: color }} />
+            {series.category_name}
+          </h2>
+          <p className="chart-subtitle">Ausgaben pro Monat · Jahr {series.year}</p>
+        </div>
+        <button type="button" className="chart-close" onClick={onClose} aria-label="Diagramm schließen">
+          Schließen
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="loading">Lade Monatsverlauf …</div>
+      ) : error ? (
+        <div className="banner error">{error}</div>
+      ) : (
+        <>
+          <div className="bar-chart" role="img" aria-label={`Monatsausgaben ${series.category_name}`}>
+            {series.months.map((m) => {
+              const spentPct = (m.spent / maxValue) * 100;
+              const budgetPct = (m.budget / maxValue) * 100;
+              const over = m.budget > 0 && m.spent > m.budget + 0.005;
+              const active = highlightMonth === m.year_month;
+              return (
+                <div
+                  key={m.year_month}
+                  className={`bar-col${active ? " active" : ""}`}
+                  title={`${formatMonthLabel(m.year_month)}: ${formatEuro(m.spent)} (Budget ${formatEuro(m.budget)})`}
+                >
+                  <div className="bar-track">
+                    {m.budget > 0 && (
+                      <div
+                        className="bar-budget"
+                        style={{ height: `${budgetPct}%` }}
+                      />
+                    )}
+                    <div
+                      className={`bar-spent${over ? " over" : ""}`}
+                      style={{
+                        height: `${spentPct}%`,
+                        backgroundColor: over ? undefined : color,
+                      }}
+                    />
+                  </div>
+                  <span className="bar-label">{shortMonthLabel(m.year_month)}</span>
+                  <span className="bar-value">{m.spent > 0 ? formatEuro(m.spent) : "–"}</span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="chart-legend">
+            <span>
+              <i className="legend-swatch spent" style={{ backgroundColor: color }} /> Ist
+            </span>
+            <span>
+              <i className="legend-swatch budget" /> Monatsbudget
+            </span>
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 
