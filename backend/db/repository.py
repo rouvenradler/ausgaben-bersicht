@@ -223,3 +223,32 @@ class Repository:
             if not row:
                 return None
             return dict(row)
+
+    def replace_assets(self, conn, assets) -> None:
+        conn.execute("DELETE FROM assets")
+        for item in assets:
+            conn.execute(
+                """
+                INSERT INTO assets (name, value_cents, sort_order)
+                VALUES (?, ?, ?)
+                """,
+                (item.name, item.value_cents, item.sort_order),
+            )
+
+    def list_assets(self) -> list[dict]:
+        with get_connection(self.db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT name, value_cents, sort_order
+                FROM assets
+                ORDER BY sort_order, name
+                """
+            ).fetchall()
+            return [
+                {
+                    "name": row["name"],
+                    "value_cents": int(row["value_cents"]),
+                    "sort_order": int(row["sort_order"]),
+                }
+                for row in rows
+            ]

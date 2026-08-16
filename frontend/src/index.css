@@ -195,6 +195,68 @@ body {
   margin-bottom: 1.5rem;
 }
 
+.kpis-assets {
+  grid-template-columns: minmax(220px, 320px);
+}
+
+.assets-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.assets-donut {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.donut-center-label {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.donut-center-value {
+  fill: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.assets-donut-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.assets-donut-legend li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.assets-donut-legend .legend-name {
+  color: var(--text);
+}
+
+.assets-donut-legend .legend-pct {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 800px) {
+  .assets-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 .kpi-card {
   background: var(--surface);
   border: 1px solid var(--border);

@@ -76,6 +76,22 @@ export async function fetchSyncStatus(): Promise<SyncStatus> {
   return res.json();
 }
 
+export interface AssetItem {
+  name: string;
+  value: number;
+}
+
+export interface AssetsOverview {
+  items: AssetItem[];
+  total: number;
+}
+
+export async function fetchAssets(): Promise<AssetsOverview> {
+  const res = await fetch(`${API}/assets`);
+  if (!res.ok) throw new Error("Vermögen konnte nicht geladen werden");
+  return res.json();
+}
+
 export async function triggerSync(): Promise<void> {
   const res = await fetch(`${API}/sync/trigger`, { method: "POST" });
   if (!res.ok) {
@@ -100,7 +116,7 @@ export function formatMonthLabel(yearMonth: string): string {
   return date.toLocaleDateString("de-DE", { month: "long", year: "numeric" });
 }
 
-export type PeriodScope = "month" | "year";
+export type PeriodScope = "assets" | "month" | "year";
 
 export function isYearPeriod(period: string): boolean {
   return /^\d{4}$/.test(period);
@@ -116,6 +132,7 @@ export function yearPeriodsOnly(periods: string[]): string[] {
 
 /** Periodenliste für den aktiven Scope (Monate bzw. Jahre). */
 export function periodsForScope(periods: string[], scope: PeriodScope): string[] {
+  if (scope === "assets") return [];
   return scope === "year" ? yearPeriodsOnly(periods) : monthPeriodsOnly(periods);
 }
 
@@ -128,6 +145,7 @@ export function pickPeriodForScope(
   scope: PeriodScope,
   current?: string,
 ): string | undefined {
+  if (scope === "assets") return undefined;
   const list = periodsForScope(periods, scope);
   if (list.length === 0) return undefined;
 

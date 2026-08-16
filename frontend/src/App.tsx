@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   elapsedFraction,
+  fetchAssets,
   fetchCategoryMonthly,
   fetchMonths,
   fetchOverview,
@@ -16,6 +17,7 @@ import {
   splitCategories,
   sumCategories,
   triggerSync,
+  type AssetsOverview,
   type CategoryMonthlySeries,
   type CategoryRow,
   type Overview,
@@ -23,6 +25,8 @@ import {
   type SyncStatus,
 } from "./api";
 import {
+  AssetsDonutChart,
+  AssetsTable,
   CategoryMonthlyChart,
   CategoryTable,
   KpiCard,
@@ -35,6 +39,7 @@ export default function App() {
   const [period, setPeriod] = useState<string>("");
   const [scope, setScope] = useState<PeriodScope>("year");
   const [overview, setOverview] = useState<Overview | null>(null);
+  const [assets, setAssets] = useState<AssetsOverview | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -71,11 +76,26 @@ export default function App() {
     }
   }, []);
 
+  const loadAssets = useCallback(async () => {
+    try {
+      const data = await fetchAssets();
+      setAssets(data);
+      return data;
+    } catch {
+      setAssets({ items: [], total: 0 });
+      return { items: [], total: 0 };
+    }
+  }, []);
+
   const loadData = useCallback(async (selectedPeriod?: string, preferredScope?: PeriodScope) => {
     setLoading(true);
     setError(null);
     try {
-      const [periodList, status] = await Promise.all([fetchMonths(), fetchSyncStatus()]);
+      const [periodList, status, assetsData] = await Promise.all([
+        fetchMonths(),
+        fetchSyncStatus(),
+        loadAssets(),
+      ]);
       setSyncStatus(status);
       setPeriods(periodList);
 
@@ -87,6 +107,14 @@ export default function App() {
             : "month"
           : "year");
       setScope(nextScope);
+
+      if (nextScope === "assets") {
+        setOverview(null);
+        if (!assetsData.items.length) {
+          setError("Noch keine Vermögensdaten vorhanden. Bitte syncen.");
+        }
+        return;
+      }
 
       const active =
         selectedPeriod && periodList.includes(selectedPeriod)
@@ -106,17 +134,17 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadAssets]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
   useEffect(() => {
-    if (selectedCategoryId != null && chartYear) {
+    if (scope !== "assets" && selectedCategoryId != null && chartYear) {
       void loadCategoryChart(selectedCategoryId, chartYear);
     }
-  }, [selectedCategoryId, chartYear, loadCategoryChart]);
+  }, [selectedCategoryId, chartYear, loadCategoryChart, scope]);
 
   const onPeriodChange = async (next: string) => {
     setPeriod(next);
@@ -134,6 +162,27 @@ export default function App() {
 
   const onScopeChange = async (nextScope: PeriodScope) => {
     if (nextScope === scope) return;
+
+    if (nextScope === "assets") {
+      setScope("assets");
+      setSelectedCategoryId(null);
+      setMonthlySeries(null);
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await loadAssets();
+        setOverview(null);
+        if (!data.items.length) {
+          setError("Noch keine Vermögensdaten vorhanden. Bitte syncen.");
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Vermögen konnte nicht geladen werden");
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     const next = pickPeriodForScope(periods, nextScope, period);
     if (!next) return;
     setScope(nextScope);
@@ -146,7 +195,7 @@ export default function App() {
     try {
       await triggerSync();
       await loadData(period, scope);
-      if (selectedCategoryId != null && chartYear) {
+      if (scope !== "assets" && selectedCategoryId != null && chartYear) {
         await loadCategoryChart(selectedCategoryId, chartYear);
       }
     } catch (e) {
@@ -180,25 +229,29 @@ export default function App() {
   const fraction = period ? elapsedFraction(period) : 1;
   const income = overview?.income ?? 0;
 
+  const subtitle =
+    scope === "assets"
+      ? "Vermögensübersicht"
+      : period
+        ? formatMonthLabel(period)
+        : "Finanzübersicht";
+
   return (
     <div className="app">
       <header className="header">
         <div>
           <h1>Kontomanager</h1>
-          <p className="subtitle">
-            {period ? formatMonthLabel(period) : "Finanzübersicht"}
-          </p>
+          <p className="subtitle">{subtitle}</p>
         </div>
         <div className="header-actions">
-          {(hasMonths || hasYears) && (
-            <ScopeToggle
-              scope={scope}
-              onChange={onScopeChange}
-              hasMonths={hasMonths}
-              hasYears={hasYears}
-            />
-          )}
-          {scopedPeriods.length > 0 && period && (
+          <ScopeToggle
+            scope={scope}
+            onChange={onScopeChange}
+            hasMonths={hasMonths}
+            hasYears={hasYears}
+            hasAssets
+          />
+          {scope !== "assets" && scopedPeriods.length > 0 && period && (
             <MonthSelector
               months={scopedPeriods}
               current={period}
@@ -218,8 +271,21 @@ export default function App() {
         </div>
       )}
 
-      {loading && !overview ? (
+      {loading && !(scope === "assets" ? assets : overview) ? (
         <div className="loading">Lade Daten …</div>
+      ) : scope === "assets" && assets ? (
+        <>
+          <section className="kpis kpis-assets">
+            <KpiCard label="Gesamtvermögen" value={formatEuro(assets.total)} variant="ok" />
+          </section>
+          <section className="panel">
+            <h2>Vermögen</h2>
+            <div className="assets-layout">
+              <AssetsTable items={assets.items} total={assets.total} />
+              <AssetsDonutChart items={assets.items} total={assets.total} />
+            </div>
+          </section>
+        </>
       ) : overview ? (
         <>
           <section className="kpis">

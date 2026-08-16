@@ -43,6 +43,11 @@ skip_row_labels:
 income_row_labels:
   - Einnahmen
 
+# Kurzüberblick Vermögen (Tab „Vermögensübersicht“, Spalten Vermögen / Wert)
+assets_tab: Vermögensübersicht
+assets_name_column: 1
+assets_value_column: 2
+
 exclude_categories:
   - Gehalt
   - Wertpapiere

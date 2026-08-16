@@ -18,6 +18,13 @@ class ParsedBudgetRow:
     sort_order: int
 
 
+@dataclass
+class ParsedAsset:
+    name: str
+    value_cents: int
+    sort_order: int
+
+
 def load_parser_config(config_path: Path) -> dict:
     with config_path.open(encoding="utf-8") as f:
         return yaml.safe_load(f)
@@ -28,8 +35,9 @@ def parse_amount(value) -> int:
         return 0
     if isinstance(value, (int, float)):
         return int(round(float(value) * 100))
-    text = str(value).strip().replace("€", "").replace(" ", "")
-    if not text:
+    text = str(value).strip().replace("€", "").replace(" ", "").replace("\xa0", "")
+    # Platzhalter wie "- €" / "-   €" in älteren Jahresübersichten
+    if not text or text in {"-", "–", "—"} or re.fullmatch(r"-+", text):
         return 0
     text = text.replace(".", "").replace(",", ".") if re.search(r",\d{1,2}$", text) else text
     try:
@@ -173,11 +181,16 @@ def parse_overview_matrix(
         return []
 
     header = rows[config["header_row"]]
-    year_raw = _cell(header, config.get("year_column", 0))
-    try:
-        year = str(int(float(year_raw)))
-    except (TypeError, ValueError):
-        return []
+    # Tab-Name YYYY hat Vorrang — in kopierten Sheets steht in der Header-Zelle
+    # oft noch das falsche Jahr (z. B. 2026 in Tabs 2024/2025).
+    if re.fullmatch(r"\d{4}", tab_name):
+        year = tab_name
+    else:
+        year_raw = _cell(header, config.get("year_column", 0))
+        try:
+            year = str(int(float(year_raw)))
+        except (TypeError, ValueError):
+            return []
 
     month_map = config.get("month_columns") or {
         "Jan": 1,
@@ -271,3 +284,37 @@ def parse_spreadsheet(all_tabs: dict[str, list[list]], config_path: Path) -> lis
             parsed.extend(parse_monthly_tab(tab_name, rows, config, sort_base))
             sort_base += 1000
     return parsed
+
+
+def parse_assets(all_tabs: dict[str, list[list]], config_path: Path) -> list[ParsedAsset]:
+    """Liest die Kurzüberblick-Tabelle Vermögen / Wert aus dem Vermögensübersicht-Tab."""
+    config = load_parser_config(config_path)
+    tab_name = config.get("assets_tab", "Vermögensübersicht")
+    rows = all_tabs.get(tab_name)
+    if not rows:
+        return []
+
+    name_col = int(config.get("assets_name_column", 1))
+    value_col = int(config.get("assets_value_column", 2))
+
+    header_idx = None
+    for i, row in enumerate(rows):
+        name = str(_cell(row, name_col) or "").strip().lower()
+        value = str(_cell(row, value_col) or "").strip().lower()
+        if name == "vermögen" and value.startswith("wert"):
+            header_idx = i
+            break
+    if header_idx is None:
+        return []
+
+    assets: list[ParsedAsset] = []
+    for idx, row in enumerate(rows[header_idx + 1 :], start=1):
+        if any(str(c).strip().upper() == "IBAN" for c in row):
+            break
+        name = str(_cell(row, name_col) or "").strip()
+        if not name:
+            break
+        value_cents = parse_amount(_cell(row, value_col))
+        assets.append(ParsedAsset(name=name, value_cents=value_cents, sort_order=idx))
+
+    return assets

@@ -342,6 +342,7 @@ interface ScopeToggleProps {
   onChange: (scope: PeriodScope) => void;
   hasMonths?: boolean;
   hasYears?: boolean;
+  hasAssets?: boolean;
 }
 
 export function ScopeToggle({
@@ -349,9 +350,19 @@ export function ScopeToggle({
   onChange,
   hasMonths = true,
   hasYears = true,
+  hasAssets = true,
 }: ScopeToggleProps) {
   return (
-    <div className="scope-toggle" role="group" aria-label="Zeitraum">
+    <div className="scope-toggle" role="group" aria-label="Ansicht">
+      <button
+        type="button"
+        className={scope === "assets" ? "active" : ""}
+        aria-pressed={scope === "assets"}
+        disabled={!hasAssets}
+        onClick={() => onChange("assets")}
+      >
+        Vermögen
+      </button>
       <button
         type="button"
         className={scope === "month" ? "active" : ""}
@@ -370,6 +381,156 @@ export function ScopeToggle({
       >
         Jahr
       </button>
+    </div>
+  );
+}
+
+interface AssetsTableProps {
+  items: { name: string; value: number }[];
+  total: number;
+}
+
+export function AssetsTable({ items, total }: AssetsTableProps) {
+  return (
+    <div className="table-wrap">
+      <table className="category-table assets-table">
+        <thead>
+          <tr>
+            <th>Vermögen</th>
+            <th className="num">Wert</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item, i) => (
+            <tr key={item.name}>
+              <td className="cat-name">
+                <span className="cat-dot" style={{ backgroundColor: categoryColor(i) }} />
+                {item.name}
+              </td>
+              <td className="num">{formatEuro(item.value)}</td>
+            </tr>
+          ))}
+        </tbody>
+        {items.length > 0 && (
+          <tfoot>
+            <tr className="total-row">
+              <td className="cat-name">Summe</td>
+              <td className="num">{formatEuro(total)}</td>
+            </tr>
+          </tfoot>
+        )}
+      </table>
+    </div>
+  );
+}
+
+function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
+  const rad = ((angleDeg - 90) * Math.PI) / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+
+function describeDonutSlice(
+  cx: number,
+  cy: number,
+  outerR: number,
+  innerR: number,
+  startAngle: number,
+  endAngle: number,
+): string {
+  const largeArc = endAngle - startAngle > 180 ? 1 : 0;
+  const outerStart = polarToCartesian(cx, cy, outerR, endAngle);
+  const outerEnd = polarToCartesian(cx, cy, outerR, startAngle);
+  const innerStart = polarToCartesian(cx, cy, innerR, startAngle);
+  const innerEnd = polarToCartesian(cx, cy, innerR, endAngle);
+  return [
+    `M ${outerStart.x} ${outerStart.y}`,
+    `A ${outerR} ${outerR} 0 ${largeArc} 0 ${outerEnd.x} ${outerEnd.y}`,
+    `L ${innerStart.x} ${innerStart.y}`,
+    `A ${innerR} ${innerR} 0 ${largeArc} 1 ${innerEnd.x} ${innerEnd.y}`,
+    "Z",
+  ].join(" ");
+}
+
+interface AssetsDonutProps {
+  items: { name: string; value: number }[];
+  total: number;
+}
+
+export function AssetsDonutChart({ items, total }: AssetsDonutProps) {
+  const size = 220;
+  const cx = size / 2;
+  const cy = size / 2;
+  const outerR = 96;
+  const innerR = 58;
+
+  let angle = 0;
+  const slices =
+    total > 0
+      ? items
+          .map((item, index) => ({ item, index }))
+          .filter(({ item }) => item.value > 0)
+          .map(({ item, index }) => {
+            const sweep = (item.value / total) * 360;
+            const start = angle;
+            const end = angle + sweep;
+            angle = end;
+            const safeEnd = sweep >= 359.99 ? start + 359.99 : end;
+            return {
+              name: item.name,
+              value: item.value,
+              color: categoryColor(index),
+              path: describeDonutSlice(cx, cy, outerR, innerR, start, safeEnd),
+              percent: Math.round((item.value / total) * 1000) / 10,
+            };
+          })
+      : [];
+
+  return (
+    <div className="assets-donut">
+      <svg
+        viewBox={`0 0 ${size} ${size}`}
+        width={size}
+        height={size}
+        role="img"
+        aria-label="Vermögensverteilung"
+      >
+        {slices.length === 0 ? (
+          <circle cx={cx} cy={cy} r={outerR} fill="var(--surface-2)" />
+        ) : (
+          slices.map((slice) => (
+            <path
+              key={slice.name}
+              d={slice.path}
+              fill={slice.color}
+              stroke="var(--surface)"
+              strokeWidth="2"
+            >
+              <title>
+                {slice.name}: {formatEuro(slice.value)} ({slice.percent} %)
+              </title>
+            </path>
+          ))
+        )}
+        <circle cx={cx} cy={cy} r={innerR - 1} fill="var(--surface)" />
+        <text x={cx} y={cy - 6} textAnchor="middle" className="donut-center-label">
+          Gesamt
+        </text>
+        <text x={cx} y={cy + 14} textAnchor="middle" className="donut-center-value">
+          {formatEuro(total)}
+        </text>
+      </svg>
+      <ul className="assets-donut-legend">
+        {items.map((item, i) => {
+          const percent = total > 0 ? Math.round((item.value / total) * 1000) / 10 : 0;
+          return (
+            <li key={item.name}>
+              <span className="cat-dot" style={{ backgroundColor: categoryColor(i) }} />
+              <span className="legend-name">{item.name}</span>
+              <span className="legend-pct">{percent} %</span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

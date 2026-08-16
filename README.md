@@ -51,11 +51,12 @@ Kontomanager/
 
 ## Funktionen (UI)
 
-- **Monat / Jahr-Umschalter** — Selektor zeigt nur Monate bzw. nur Jahre aus der Excel
+- **Monat / Jahr / Vermögen-Umschalter** — Ausgaben nach Monat/Jahr oder Vermögensübersicht
 - Standardstart auf der **Jahresübersicht**; Monate bei Bedarf wählbar
 - KPI-Karten: Budget, Ausgegeben, Verbleibend, **Einnahmen** (aus Excel-Zeile „Einnahmen“)
 - Kategorie-Tabelle mit Soll (Jahr/Monat), Ist, anteiligem Soll (YTD), Abweichung, Rest, Auslastung und Trend
 - Getrennte Tabelle für **Geldanlagen**
+- **Vermögen**-Ansicht aus Tab „Vermögensübersicht“ (Girokonto, Tagesgeld, Festgeld, Wertpapiere)
 - **Klick auf eine Kategorie** → Balkendiagramm mit Ausgaben Jan–Dez (unter den Tabellen)
 - Manueller Sync-Trigger in der Oberfläche
 
@@ -209,6 +210,7 @@ Volumes:
 | `GET /api/months` | Verfügbare Monate und Jahre |
 | `GET /api/overview?month=2025-06` | Übersicht für einen Monat (inkl. `income`) |
 | `GET /api/overview?month=2025` | Übersicht für ein ganzes Jahr (inkl. `income`) |
+| `GET /api/assets` | Kurzüberblick Vermögen (Girokonto, Tagesgeld, …) |
 | `GET /api/categories/{id}/monthly?year=2026` | Monatsverlauf einer Kategorie (Jan–Dez) |
 | `GET /api/sync/status` | Letzter Sync |
 | `POST /api/sync/trigger` | Manueller Sync |

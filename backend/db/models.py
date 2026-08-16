@@ -30,6 +30,13 @@ CREATE TABLE IF NOT EXISTS sync_runs (
     rows_processed INTEGER NOT NULL DEFAULT 0,
     error_message TEXT
 );
+
+CREATE TABLE IF NOT EXISTS assets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    value_cents INTEGER NOT NULL DEFAULT 0,
+    sort_order INTEGER NOT NULL DEFAULT 0
+);
 """
 
 

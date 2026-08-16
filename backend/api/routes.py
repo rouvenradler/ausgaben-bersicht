@@ -153,6 +153,24 @@ def category_monthly(category_id: int, year: str, request: Request):
     }
 
 
+@router.get("/assets")
+def list_assets(request: Request):
+    repo: Repository = request.app.state.repo
+    rows = repo.list_assets()
+    items = [
+        {
+            "name": row["name"],
+            "value": _format_cents(row["value_cents"]),
+        }
+        for row in rows
+    ]
+    total = sum(row["value_cents"] for row in rows)
+    return {
+        "items": items,
+        "total": _format_cents(total),
+    }
+
+
 @router.get("/sync/status")
 def sync_status(request: Request):
     repo: Repository = request.app.state.repo
