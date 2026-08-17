@@ -47,6 +47,9 @@ income_row_labels:
 assets_tab: Vermögensübersicht
 assets_name_column: 1
 assets_value_column: 2
+assets_iban_column: 2
+assets_detail_value_column: 4
+assets_wkn_column: 5
 
 exclude_categories:
   - Gehalt

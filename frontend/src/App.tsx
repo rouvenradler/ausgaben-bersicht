@@ -25,8 +25,7 @@ import {
   type SyncStatus,
 } from "./api";
 import {
-  AssetsDonutChart,
-  AssetsTable,
+  AssetsDashboard,
   CategoryMonthlyChart,
   CategoryTable,
   KpiCard,
@@ -82,8 +81,8 @@ export default function App() {
       setAssets(data);
       return data;
     } catch {
-      setAssets({ items: [], total: 0 });
-      return { items: [], total: 0 };
+      setAssets({ items: [], total: 0, accounts: [] });
+      return { items: [], total: 0, accounts: [] };
     }
   }, []);
 
@@ -231,16 +230,16 @@ export default function App() {
 
   const subtitle =
     scope === "assets"
-      ? "Vermögensübersicht"
+      ? "Dein Vermögen auf einen Blick"
       : period
         ? formatMonthLabel(period)
         : "Finanzübersicht";
 
   return (
-    <div className="app">
+    <div className={`app${scope === "assets" ? " app-wide" : ""}`}>
       <header className="header">
         <div>
-          <h1>Kontomanager</h1>
+          <h1>{scope === "assets" ? "Vermögensübersicht" : "Kontomanager"}</h1>
           <p className="subtitle">{subtitle}</p>
         </div>
         <div className="header-actions">
@@ -274,18 +273,7 @@ export default function App() {
       {loading && !(scope === "assets" ? assets : overview) ? (
         <div className="loading">Lade Daten …</div>
       ) : scope === "assets" && assets ? (
-        <>
-          <section className="kpis kpis-assets">
-            <KpiCard label="Gesamtvermögen" value={formatEuro(assets.total)} variant="ok" />
-          </section>
-          <section className="panel">
-            <h2>Vermögen</h2>
-            <div className="assets-layout">
-              <AssetsTable items={assets.items} total={assets.total} />
-              <AssetsDonutChart items={assets.items} total={assets.total} />
-            </div>
-          </section>
-        </>
+        <AssetsDashboard accounts={assets.accounts ?? []} summaryTotal={assets.total} />
       ) : overview ? (
         <>
           <section className="kpis">

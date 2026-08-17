@@ -165,9 +165,25 @@ def list_assets(request: Request):
         for row in rows
     ]
     total = sum(row["value_cents"] for row in rows)
+    accounts = [
+        {
+            "group": row["group"],
+            "name": row["name"],
+            "iban": row["iban"],
+            "value": _format_cents(row["value_cents"]),
+            "institute": row["institute"],
+            "category": row["category"],
+            "owner": row["owner"],
+            "as_of": row["as_of"],
+            "rate_kind": row["rate_kind"],
+            "rate_value": row["rate_value"],
+        }
+        for row in repo.list_asset_accounts()
+    ]
     return {
         "items": items,
         "total": _format_cents(total),
+        "accounts": accounts,
     }
 
 

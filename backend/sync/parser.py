@@ -25,6 +25,122 @@ class ParsedAsset:
     sort_order: int
 
 
+@dataclass
+class ParsedAssetAccount:
+    group: str
+    name: str
+    iban: str
+    value_cents: int
+    sort_order: int
+    institute: str = ""
+    category: str = ""
+    owner: str = ""
+    as_of: str = ""
+    rate_kind: str = ""
+    rate_value: float = 0.0
+
+
+_ASSET_GROUP_HEADERS = {
+    "girokonto": "Girokonto",
+    "tagesgeld konto": "Tagesgeld Konto",
+    "tagesgeldkonto": "Tagesgeld Konto",
+    "festgeld konto": "Festgeld Konto",
+    "festgeldkonto": "Festgeld Konto",
+    "wertpapiere": "Wertpapiere",
+    "einzelaktien": "Einzelaktien",
+}
+_ASSET_HEADER_MARKERS = {"iban", "kategorie", "wkn", "institut"}
+_BANK_ASSET_GROUPS = {"Girokonto", "Tagesgeld Konto", "Festgeld Konto"}
+_IBAN_RE = re.compile(r"^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$", re.IGNORECASE)
+_OWNER_PREFIX_RE = re.compile(r"^(Rouven|Lena)\s+", re.IGNORECASE)
+_INSTITUTE_ALIASES = (
+    ("trade republic", "Trade Republic"),
+    ("trade repuplik", "Trade Republic"),
+    ("scalable", "Scalable Capital"),
+    ("union", "Union Investment"),
+    ("fnz", "FNZ Bank"),
+    ("comdirect", "Comdirect"),
+    ("noris", "Norisbank"),
+    ("consors", "Consorsbank"),
+    ("consor", "Consorsbank"),
+    ("raisin", "Raisin"),
+    ("dkb", "DKB"),
+)
+
+
+def _infer_owner(name: str) -> str:
+    lowered = name.casefold()
+    if "gemeinschaft" in lowered or "gemeinsam" in lowered:
+        return "Gemeinsam"
+    match = _OWNER_PREFIX_RE.match(name.strip())
+    if match:
+        return "Rouven" if match.group(1).casefold() == "rouven" else "Lena"
+    has_lena = "lena" in lowered
+    has_rouven = "rouven" in lowered
+    if has_lena and not has_rouven:
+        return "Lena"
+    if has_rouven and not has_lena:
+        return "Rouven"
+    return ""
+
+
+def _display_asset_name(name: str) -> str:
+    stripped = _OWNER_PREFIX_RE.sub("", name.strip(), count=1).strip()
+    return stripped or name.strip()
+
+
+def _infer_institute(name: str, explicit: str = "") -> str:
+    if explicit.strip():
+        value = explicit.strip()
+        lowered = value.casefold()
+        if "scalable" in lowered:
+            return "Scalable Capital"
+        if "union" in lowered:
+            return "Union Investment"
+        if "fnz" in lowered:
+            return "FNZ Bank"
+        if "trade" in lowered:
+            return "Trade Republic"
+        return value
+    lowered = name.casefold()
+    for needle, label in _INSTITUTE_ALIASES:
+        if needle in lowered:
+            return label
+    return ""
+
+
+def _parse_as_of(value) -> str:
+    if value is None or value == "":
+        return ""
+    if hasattr(value, "strftime"):
+        return value.strftime("%Y-%m-%d")
+    text = str(value).strip()
+    if re.match(r"^\d{4}-\d{2}-\d{2}", text):
+        return text[:10]
+    match = re.match(r"^(\d{1,2})\.(\d{1,2})\.(\d{2,4})$", text)
+    if match:
+        day, month, year = match.groups()
+        if len(year) == 2:
+            year = f"20{year}"
+        return f"{year}-{int(month):02d}-{int(day):02d}"
+    return text
+
+
+def _parse_rate(value) -> float:
+    if value is None or value == "":
+        return 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip().replace("%", "").replace("€", "").replace(" ", "").replace("\xa0", "")
+    if not text:
+        return 0.0
+    text = text.replace(".", "").replace(",", ".") if re.search(r",\d{1,2}$", text) else text
+    try:
+        return float(text)
+    except ValueError:
+        return 0.0
+
+
 def load_parser_config(config_path: Path) -> dict:
     with config_path.open(encoding="utf-8") as f:
         return yaml.safe_load(f)
@@ -318,3 +434,84 @@ def parse_assets(all_tabs: dict[str, list[list]], config_path: Path) -> list[Par
         assets.append(ParsedAsset(name=name, value_cents=value_cents, sort_order=idx))
 
     return assets
+
+
+def parse_asset_accounts(
+    all_tabs: dict[str, list[list]],
+    config_path: Path,
+) -> list[ParsedAssetAccount]:
+    """Liest Kontodetails (Name, IBAN/WKN, Vermögenswert) aus dem Vermögensübersicht-Tab."""
+    config = load_parser_config(config_path)
+    tab_name = config.get("assets_tab", "Vermögensübersicht")
+    rows = all_tabs.get(tab_name)
+    if not rows:
+        return []
+
+    name_col = int(config.get("assets_name_column", 1))
+    iban_col = int(config.get("assets_iban_column", 2))
+    value_col = int(config.get("assets_detail_value_column", 4))
+    wkn_col = int(config.get("assets_wkn_column", 5))
+
+    start_idx = None
+    for i, row in enumerate(rows):
+        if any(str(cell).strip().upper() == "IBAN" for cell in row):
+            start_idx = i
+            break
+    if start_idx is None:
+        return []
+
+    accounts: list[ParsedAssetAccount] = []
+    current_group: str | None = None
+    sort_order = 0
+
+    for row in rows[start_idx:]:
+        name = str(_cell(row, name_col) or "").strip()
+        if not name:
+            continue
+
+        group_key = name.casefold()
+        if group_key in _ASSET_GROUP_HEADERS:
+            current_group = _ASSET_GROUP_HEADERS[group_key]
+            marker = str(_cell(row, iban_col) or "").strip().casefold()
+            if not marker or marker in _ASSET_HEADER_MARKERS:
+                continue
+
+        if current_group is None:
+            continue
+
+        if current_group in _BANK_ASSET_GROUPS:
+            identifier = str(_cell(row, iban_col) or "").strip().replace(" ", "")
+            if identifier and not _IBAN_RE.match(identifier):
+                continue
+            institute = _infer_institute(name)
+            category = current_group.replace(" Konto", "")
+            as_of = _parse_as_of(_cell(row, 5))
+            rate_kind = "interest"
+            rate_value = _parse_rate(_cell(row, 6))
+        else:
+            identifier = str(_cell(row, wkn_col) or "").strip()
+            institute = _infer_institute(name, str(_cell(row, 3) or ""))
+            category = str(_cell(row, 2) or "").strip()
+            as_of = _parse_as_of(_cell(row, 6))
+            rate_kind = "contribution"
+            rate_value = _parse_rate(_cell(row, 7))
+
+        sort_order += 1
+        owner = _infer_owner(name)
+        accounts.append(
+            ParsedAssetAccount(
+                group=current_group,
+                name=_display_asset_name(name),
+                iban=identifier,
+                value_cents=parse_amount(_cell(row, value_col)),
+                sort_order=sort_order,
+                institute=institute,
+                category=category,
+                owner=owner,
+                as_of=as_of,
+                rate_kind=rate_kind,
+                rate_value=rate_value,
+            )
+        )
+
+    return accounts

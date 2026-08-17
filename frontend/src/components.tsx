@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   formatEuro,
   formatMonthLabel,
@@ -420,6 +421,189 @@ export function AssetsTable({ items, total }: AssetsTableProps) {
           </tfoot>
         )}
       </table>
+    </div>
+  );
+}
+
+const ASSET_GROUP_ORDER = [
+  "Girokonto",
+  "Tagesgeld Konto",
+  "Festgeld Konto",
+  "Wertpapiere",
+  "Einzelaktien",
+] as const;
+
+const ASSET_GROUP_META: Record<
+  string,
+  { label: string; short: string; tone: string; icon: string }
+> = {
+  Girokonto: { label: "Girokonten", short: "Girokonto", tone: "giro", icon: "€" },
+  "Tagesgeld Konto": { label: "Tagesgeld", short: "Tagesgeld", tone: "tagesgeld", icon: "%" },
+  "Festgeld Konto": { label: "Festgeld", short: "Festgeld", tone: "festgeld", icon: "⏱" },
+  Wertpapiere: { label: "Wertpapiere", short: "Wertpapiere", tone: "wp", icon: "↗" },
+  Einzelaktien: { label: "Einzelaktien", short: "Aktien", tone: "wp", icon: "■" },
+};
+
+type OwnerFilter = "all" | "Rouven" | "Lena";
+type GroupFilter = "all" | (typeof ASSET_GROUP_ORDER)[number];
+
+function matchesOwner(owner: string | undefined, filter: OwnerFilter): boolean {
+  if (filter === "all") return true;
+  return owner === filter;
+}
+
+function shareLabel(value: number, total: number): string {
+  if (total <= 0) return "0,0 %";
+  return `${((value / total) * 100).toLocaleString("de-DE", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })} %`;
+}
+
+interface AssetsDashboardProps {
+  accounts: AssetAccountLike[];
+  summaryTotal: number;
+}
+
+type AssetAccountLike = {
+  group: string;
+  name: string;
+  iban: string;
+  value: number;
+  institute?: string;
+  category?: string;
+  owner?: string;
+  as_of?: string;
+  rate_kind?: string;
+  rate_value?: number;
+};
+
+export function AssetsDashboard({ accounts, summaryTotal }: AssetsDashboardProps) {
+  const [owner, setOwner] = useState<OwnerFilter>("all");
+  const [groupFilter, setGroupFilter] = useState<GroupFilter>("all");
+
+  const visible = accounts.filter((account) => matchesOwner(account.owner, owner));
+  const filtered =
+    groupFilter === "all" ? visible : visible.filter((account) => account.group === groupFilter);
+  const total = visible.reduce((sum, account) => sum + account.value, 0);
+  const displayTotal = owner === "all" && summaryTotal > 0 ? summaryTotal : total;
+
+  const sumGroup = (group: string) =>
+    visible.filter((account) => account.group === group).reduce((sum, account) => sum + account.value, 0);
+
+  const kpiGroups = ["Girokonto", "Tagesgeld Konto", "Wertpapiere"] as const;
+
+  return (
+    <div className="assets-dashboard">
+      <section className="panel owner-panel">
+        <h2>Ansicht wählen</h2>
+        <div className="owner-cards">
+          {(
+            [
+              { id: "all", title: "Gesamt", sub: "Rouven & Lena" },
+              { id: "Rouven", title: "Rouven", sub: "Nur dein Vermögen" },
+              { id: "Lena", title: "Lena", sub: "Nur Lenas Vermögen" },
+            ] as const
+          ).map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              className={`owner-card${owner === option.id ? " active" : ""}`}
+              onClick={() => setOwner(option.id)}
+            >
+              <strong>{option.title}</strong>
+              <span>{option.sub}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="kpis assets-kpis">
+        <div className="kpi-card ok">
+          <span className="kpi-label">Gesamtvermögen</span>
+          <span className="kpi-value">{formatEuro(displayTotal)}</span>
+        </div>
+        {kpiGroups.map((group) => {
+          const meta = ASSET_GROUP_META[group];
+          const value = sumGroup(group);
+          return (
+            <div key={group} className={`kpi-card asset-kpi ${meta.tone}`}>
+              <span className="kpi-label">{meta.short}</span>
+              <span className="kpi-value">{formatEuro(value)}</span>
+              <span className="kpi-sub">{shareLabel(value, displayTotal)} vom Vermögen</span>
+            </div>
+          );
+        })}
+      </section>
+
+      <section className="panel assets-detail-panel">
+        <div className="assets-detail-layout">
+          <nav className="assets-sidebar" aria-label="Konten & Depot">
+            <p className="sidebar-title">Konten & Depot</p>
+            <button
+              type="button"
+              className={groupFilter === "all" ? "active" : ""}
+              onClick={() => setGroupFilter("all")}
+            >
+              Alle Konten
+            </button>
+            {ASSET_GROUP_ORDER.filter((group) => group !== "Einzelaktien").map((group) => (
+              <button
+                key={group}
+                type="button"
+                className={groupFilter === group ? "active" : ""}
+                onClick={() => setGroupFilter(group)}
+              >
+                {ASSET_GROUP_META[group].label}
+              </button>
+            ))}
+          </nav>
+
+          <div className="table-wrap">
+            <table className="category-table assets-detail-table">
+              <thead>
+                <tr>
+                  <th>Konto / Depot</th>
+                  <th>Institut / Anbieter</th>
+                  <th>Inhaber</th>
+                  <th className="num">Betrag</th>
+                </tr>
+              </thead>
+              {ASSET_GROUP_ORDER.filter(
+                (group) => groupFilter === "all" || groupFilter === group,
+              ).map((group) => {
+                const rows = filtered.filter((account) => account.group === group);
+                const groupTotal = rows.reduce((sum, row) => sum + row.value, 0);
+                const meta = ASSET_GROUP_META[group];
+                return (
+                  <tbody key={group}>
+                    <tr className={`group-head ${meta.tone}`}>
+                      <td colSpan={3}>{meta.label}</td>
+                      <td className="num">{formatEuro(groupTotal)}</td>
+                    </tr>
+                    {rows.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="empty-accounts">
+                          Keine {meta.label} vorhanden
+                        </td>
+                      </tr>
+                    ) : (
+                      rows.map((row) => (
+                        <tr key={`${row.group}-${row.name}-${row.iban}`}>
+                          <td className="cat-name">{row.name}</td>
+                          <td>{row.institute || "—"}</td>
+                          <td>{row.owner || "—"}</td>
+                          <td className="num">{formatEuro(row.value)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                );
+              })}
+            </table>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

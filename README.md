@@ -60,16 +60,6 @@ Kontomanager/
 - **Klick auf eine Kategorie** → Balkendiagramm mit Ausgaben Jan–Dez (unter den Tabellen)
 - Manueller Sync-Trigger in der Oberfläche
 
-### Kennzahlen kurz erklärt
-
-| Spalte / KPI | Bedeutung |
-|--------------|-----------|
-| Soll (Jahr/Monat) | Budget aus der Excel für den Zeitraum |
-| Ist (YTD) | Bisherige Ausgaben (im Monat = Monats-Ist, im Jahr = Jahressumme) |
-| Soll (YTD) | Anteiliges Budget: `Budget × verstrichener Zeitanteil` |
-| Abw. | `Ist − Soll (YTD)` (grün unter Plan, rot über Plan) |
-| Einnahmen | Summe der Excel-Zeile „Einnahmen“ für Monat bzw. Jahr |
-
 ## Google Cloud Setup (Service Account)
 
 1. [Google Cloud Console](https://console.cloud.google.com/) → neues Projekt anlegen
@@ -210,7 +200,7 @@ Volumes:
 | `GET /api/months` | Verfügbare Monate und Jahre |
 | `GET /api/overview?month=2025-06` | Übersicht für einen Monat (inkl. `income`) |
 | `GET /api/overview?month=2025` | Übersicht für ein ganzes Jahr (inkl. `income`) |
-| `GET /api/assets` | Kurzüberblick Vermögen (Girokonto, Tagesgeld, …) |
+| `GET /api/assets` | Kurzüberblick Vermögen plus Kontodetails (Name, IBAN/WKN, Wert) |
 | `GET /api/categories/{id}/monthly?year=2026` | Monatsverlauf einer Kategorie (Jan–Dez) |
 | `GET /api/sync/status` | Letzter Sync |
 | `POST /api/sync/trigger` | Manueller Sync |

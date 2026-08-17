@@ -5,7 +5,7 @@ from pathlib import Path
 from backend.config import Settings
 from backend.db.models import get_connection, init_db
 from backend.db.repository import Repository
-from backend.sync.parser import parse_assets, parse_spreadsheet
+from backend.sync.parser import parse_asset_accounts, parse_assets, parse_spreadsheet
 from backend.sync.sheets_client import create_sheets_client
 
 
@@ -23,6 +23,7 @@ class SyncWorker:
             config_path = Path(self.settings.parser_config_path)
             rows = parse_spreadsheet(all_tabs, config_path)
             assets = parse_assets(all_tabs, config_path)
+            accounts = parse_asset_accounts(all_tabs, config_path)
 
             with get_connection(self.settings.db_path) as conn:
                 conn.execute("DELETE FROM monthly_budgets")
@@ -36,12 +37,14 @@ class SyncWorker:
                         item.spent_cents,
                     )
                 self.repo.replace_assets(conn, assets)
+                self.repo.replace_asset_accounts(conn, accounts)
 
             self.repo.finish_sync_run(run_id, "success", rows_processed=len(rows))
             return {
                 "status": "success",
                 "rows_processed": len(rows),
                 "assets_processed": len(assets),
+                "accounts_processed": len(accounts),
             }
         except Exception as exc:
             self.repo.finish_sync_run(run_id, "error", error_message=str(exc))

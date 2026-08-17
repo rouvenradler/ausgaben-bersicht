@@ -81,15 +81,34 @@ export interface AssetItem {
   value: number;
 }
 
+export interface AssetAccount {
+  group: string;
+  name: string;
+  iban: string;
+  value: number;
+  institute?: string;
+  category?: string;
+  owner?: string;
+  as_of?: string;
+  rate_kind?: string;
+  rate_value?: number;
+}
+
 export interface AssetsOverview {
   items: AssetItem[];
   total: number;
+  accounts: AssetAccount[];
 }
 
 export async function fetchAssets(): Promise<AssetsOverview> {
   const res = await fetch(`${API}/assets`);
   if (!res.ok) throw new Error("Vermögen konnte nicht geladen werden");
-  return res.json();
+  const data = await res.json();
+  return {
+    items: data.items ?? [],
+    total: data.total ?? 0,
+    accounts: data.accounts ?? [],
+  };
 }
 
 export async function triggerSync(): Promise<void> {

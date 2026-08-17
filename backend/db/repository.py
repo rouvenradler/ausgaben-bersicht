@@ -252,3 +252,56 @@ class Repository:
                 }
                 for row in rows
             ]
+
+    def replace_asset_accounts(self, conn, accounts) -> None:
+        conn.execute("DELETE FROM asset_accounts")
+        for item in accounts:
+            conn.execute(
+                """
+                INSERT INTO asset_accounts (
+                    group_name, name, iban, value_cents, sort_order,
+                    institute, category, owner, as_of, rate_kind, rate_value
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    item.group,
+                    item.name,
+                    item.iban,
+                    item.value_cents,
+                    item.sort_order,
+                    item.institute,
+                    item.category,
+                    item.owner,
+                    item.as_of,
+                    item.rate_kind,
+                    item.rate_value,
+                ),
+            )
+
+    def list_asset_accounts(self) -> list[dict]:
+        with get_connection(self.db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT group_name, name, iban, value_cents, sort_order,
+                       institute, category, owner, as_of, rate_kind, rate_value
+                FROM asset_accounts
+                ORDER BY sort_order, name
+                """
+            ).fetchall()
+            return [
+                {
+                    "group": row["group_name"],
+                    "name": row["name"],
+                    "iban": row["iban"],
+                    "value_cents": int(row["value_cents"]),
+                    "sort_order": int(row["sort_order"]),
+                    "institute": row["institute"] or "",
+                    "category": row["category"] or "",
+                    "owner": row["owner"] or "",
+                    "as_of": row["as_of"] or "",
+                    "rate_kind": row["rate_kind"] or "",
+                    "rate_value": float(row["rate_value"] or 0),
+                }
+                for row in rows
+            ]

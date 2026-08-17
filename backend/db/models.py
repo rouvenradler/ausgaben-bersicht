@@ -37,6 +37,21 @@ CREATE TABLE IF NOT EXISTS assets (
     value_cents INTEGER NOT NULL DEFAULT 0,
     sort_order INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS asset_accounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_name TEXT NOT NULL,
+    name TEXT NOT NULL,
+    iban TEXT NOT NULL DEFAULT '',
+    value_cents INTEGER NOT NULL DEFAULT 0,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    institute TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT '',
+    owner TEXT NOT NULL DEFAULT '',
+    as_of TEXT NOT NULL DEFAULT '',
+    rate_kind TEXT NOT NULL DEFAULT '',
+    rate_value REAL NOT NULL DEFAULT 0
+);
 """
 
 
@@ -44,6 +59,18 @@ def init_db(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
         conn.executescript(SCHEMA)
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(asset_accounts)")}
+        extra_columns = {
+            "institute": "TEXT NOT NULL DEFAULT ''",
+            "category": "TEXT NOT NULL DEFAULT ''",
+            "owner": "TEXT NOT NULL DEFAULT ''",
+            "as_of": "TEXT NOT NULL DEFAULT ''",
+            "rate_kind": "TEXT NOT NULL DEFAULT ''",
+            "rate_value": "REAL NOT NULL DEFAULT 0",
+        }
+        for name, ddl in extra_columns.items():
+            if name not in existing:
+                conn.execute(f"ALTER TABLE asset_accounts ADD COLUMN {name} {ddl}")
 
 
 @contextmanager
