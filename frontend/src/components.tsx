@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import {
   formatEuro,
   formatMonthLabel,
   usageClass,
   type CategoryMonthlySeries,
   type CategoryRow,
+  type CategoryTransaction,
+  type CategoryTransactions,
   type PeriodScope,
   type Trend,
 } from "./api";
@@ -18,6 +20,14 @@ interface Props {
   footerLabel?: string;
   selectedCategoryId?: number | null;
   onSelectCategory?: (row: CategoryRow, color: string) => void;
+  onSelectSpent?: (row: CategoryRow) => void;
+  chartSeries?: CategoryMonthlySeries | null;
+  chartYear?: string;
+  chartColor?: string;
+  chartHighlightMonth?: string | null;
+  chartLoading?: boolean;
+  chartError?: string | null;
+  onCloseChart?: () => void;
 }
 
 export const CATEGORY_COLORS = [
@@ -86,16 +96,51 @@ const TREND_META: Record<Trend, { symbol: string; cls: string; title: string }> 
   flat: { symbol: "→", cls: "trend-flat", title: "Ausgaben etwa gleich ggü. Vormonat" },
 };
 
-function TrendCell({ trend }: { trend?: Trend | null }) {
+function TrendCell({
+  trend,
+  selected = false,
+  onSelect,
+}: {
+  trend?: Trend | null;
+  selected?: boolean;
+  onSelect?: () => void;
+}) {
   const meta = trend ? TREND_META[trend] : null;
+  const title = onSelect
+    ? selected
+      ? "Monatsverlauf schließen"
+      : "Monatsverlauf anzeigen"
+    : (meta?.title ?? "Kein Vergleich verfügbar");
+
+  if (!onSelect) {
+    return (
+      <td className="trend-cell">
+        <span
+          className={`trend ${meta?.cls ?? "trend-none"}`}
+          title={meta?.title ?? "Kein Vergleich verfügbar"}
+        >
+          {meta?.symbol ?? "–"}
+        </span>
+      </td>
+    );
+  }
+
   return (
     <td className="trend-cell">
-      <span
-        className={`trend ${meta?.cls ?? "trend-none"}`}
-        title={meta?.title ?? "Kein Vergleich verfügbar"}
+      <button
+        type="button"
+        className={`trend trend-btn ${meta?.cls ?? "trend-none"}${selected ? " selected" : ""}`}
+        title={title}
+        aria-label={title}
+        aria-pressed={selected}
+        aria-expanded={selected}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect();
+        }}
       >
         {meta?.symbol ?? "–"}
-      </span>
+      </button>
     </td>
   );
 }
@@ -111,42 +156,42 @@ function CategoryRowView({
   fraction,
   selected,
   onSelect,
+  onSelectSpent,
 }: {
   row: CategoryRow;
   color: string;
   fraction: number;
   selected: boolean;
   onSelect?: () => void;
+  onSelectSpent?: () => void;
 }) {
   const soll = row.budget * fraction;
   const abw = row.spent - soll;
-  const interactive = Boolean(onSelect);
   return (
-    <tr
-      className={[interactive ? "category-row-clickable" : "", selected ? "selected" : ""]
-        .filter(Boolean)
-        .join(" ")}
-      onClick={onSelect}
-      onKeyDown={
-        onSelect
-          ? (e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onSelect();
-              }
-            }
-          : undefined
-      }
-      tabIndex={interactive ? 0 : undefined}
-      role={interactive ? "button" : undefined}
-      aria-pressed={interactive ? selected : undefined}
-    >
+    <tr className={selected ? "category-row-selected" : undefined}>
       <td className="cat-name">
         <span className="cat-dot" style={{ backgroundColor: color }} />
         {row.category_name}
       </td>
       <td className="num budget">{formatEuro(row.budget)}</td>
-      <td className="num">{formatEuro(row.spent)}</td>
+      <td className="num">
+        {onSelectSpent ? (
+          <button
+            type="button"
+            className="spent-btn"
+            title="Buchungen anzeigen"
+            aria-label={`Buchungen für ${row.category_name} anzeigen`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectSpent();
+            }}
+          >
+            {formatEuro(row.spent)}
+          </button>
+        ) : (
+          formatEuro(row.spent)
+        )}
+      </td>
       <td className="num soll">{formatEuro(soll)}</td>
       <AbwCell value={abw} />
       <td className={`num ${row.remaining < 0 ? "negative" : ""}`}>
@@ -155,8 +200,85 @@ function CategoryRowView({
       <td>
         <UsageCell usagePercent={row.usage_percent} />
       </td>
-      <TrendCell trend={row.trend} />
+      <TrendCell trend={row.trend} selected={selected} onSelect={onSelect} />
     </tr>
+  );
+}
+
+function CategoryRowGroup({
+  row,
+  color,
+  fraction,
+  selected,
+  onSelect,
+  onSelectSpent,
+  showChart,
+  chartSeries,
+  chartYear,
+  chartColor,
+  chartHighlightMonth,
+  chartLoading,
+  chartError,
+  onCloseChart,
+}: {
+  row: CategoryRow;
+  color: string;
+  fraction: number;
+  selected: boolean;
+  onSelect?: () => void;
+  onSelectSpent?: () => void;
+  showChart: boolean;
+  chartSeries: CategoryMonthlySeries | null;
+  chartYear: string;
+  chartColor: string;
+  chartHighlightMonth: string | null;
+  chartLoading: boolean;
+  chartError: string | null;
+  onCloseChart?: () => void;
+}) {
+  return (
+    <>
+      <CategoryRowView
+        row={row}
+        color={color}
+        fraction={fraction}
+        selected={selected}
+        onSelect={onSelect}
+        onSelectSpent={onSelectSpent}
+      />
+      {showChart && onCloseChart && (
+        <tr className="chart-expand-row">
+          <td colSpan={8}>
+            <div
+              className="chart-expand-inner"
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              <CategoryMonthlyChart
+                series={
+                  chartSeries ?? {
+                    category_id: row.category_id,
+                    category_name: row.category_name,
+                    year: chartYear || String(new Date().getFullYear()),
+                    months: Array.from({ length: 12 }, (_, i) => ({
+                      year_month: `${chartYear || new Date().getFullYear()}-${String(i + 1).padStart(2, "0")}`,
+                      budget: 0,
+                      spent: 0,
+                    })),
+                  }
+                }
+                color={chartColor}
+                highlightMonth={chartHighlightMonth}
+                loading={chartLoading && !chartSeries}
+                error={chartError}
+                onClose={onCloseChart}
+                inline
+              />
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
@@ -167,6 +289,14 @@ export function CategoryTable({
   footerLabel = "Summe",
   selectedCategoryId = null,
   onSelectCategory,
+  onSelectSpent,
+  chartSeries = null,
+  chartYear = "",
+  chartColor = "#3b82f6",
+  chartHighlightMonth = null,
+  chartLoading = false,
+  chartError = null,
+  onCloseChart,
 }: Props) {
   const budget = rows.reduce((s, r) => s + r.budget, 0);
   const spent = rows.reduce((s, r) => s + r.spent, 0);
@@ -175,6 +305,10 @@ export function CategoryTable({
   const abw = spent - soll;
   const usagePercent = budget > 0 ? Math.round((spent / budget) * 1000) / 10 : null;
   const periodSollLabel = isYearView ? "Soll (Jahr)" : "Soll (Monat)";
+  const showChart =
+    selectedCategoryId != null &&
+    Boolean(onCloseChart) &&
+    Boolean(chartSeries || chartLoading || chartError);
 
   return (
     <div className="table-wrap">
@@ -194,16 +328,26 @@ export function CategoryTable({
         <tbody>
           {rows.map((row, i) => {
             const color = categoryColor(i);
+            const selected = selectedCategoryId === row.category_id;
             return (
-              <CategoryRowView
+              <CategoryRowGroup
                 key={row.category_id}
                 row={row}
                 color={color}
                 fraction={fraction}
-                selected={selectedCategoryId === row.category_id}
+                selected={selected}
                 onSelect={
                   onSelectCategory ? () => onSelectCategory(row, color) : undefined
                 }
+                onSelectSpent={onSelectSpent ? () => onSelectSpent(row) : undefined}
+                showChart={showChart && selected}
+                chartSeries={chartSeries}
+                chartYear={chartYear}
+                chartColor={chartColor}
+                chartHighlightMonth={chartHighlightMonth}
+                chartLoading={chartLoading}
+                chartError={chartError}
+                onCloseChart={onCloseChart}
               />
             );
           })}
@@ -238,6 +382,7 @@ interface ChartProps {
   loading?: boolean;
   error?: string | null;
   onClose: () => void;
+  inline?: boolean;
 }
 
 export function CategoryMonthlyChart({
@@ -247,6 +392,7 @@ export function CategoryMonthlyChart({
   loading = false,
   error = null,
   onClose,
+  inline = false,
 }: ChartProps) {
   const maxValue = Math.max(
     ...series.months.map((m) => Math.max(m.spent, m.budget)),
@@ -254,7 +400,7 @@ export function CategoryMonthlyChart({
   );
 
   return (
-    <section className="panel chart-panel">
+    <section className={`panel chart-panel${inline ? " chart-panel-inline" : ""}`}>
       <div className="chart-header">
         <div>
           <h2>
@@ -318,6 +464,151 @@ export function CategoryMonthlyChart({
         </>
       )}
     </section>
+  );
+}
+
+function formatBookingDate(isoDate: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}/.test(isoDate)) return isoDate;
+  const [year, month, day] = isoDate.slice(0, 10).split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString("de-DE");
+}
+
+function fullMonthLabel(yearMonth: string): string {
+  const [year, month] = yearMonth.split("-").map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString("de-DE", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function groupTransactionsByMonth(items: CategoryTransaction[]): {
+  yearMonth: string;
+  items: CategoryTransaction[];
+}[] {
+  const groups: { yearMonth: string; items: CategoryTransaction[] }[] = [];
+  for (const item of items) {
+    const last = groups[groups.length - 1];
+    if (last && last.yearMonth === item.year_month) {
+      last.items.push(item);
+    } else {
+      groups.push({ yearMonth: item.year_month, items: [item] });
+    }
+  }
+  return groups;
+}
+
+interface TransactionsModalProps {
+  data: CategoryTransactions | null;
+  loading?: boolean;
+  error?: string | null;
+  groupByMonth?: boolean;
+  onClose: () => void;
+}
+
+export function TransactionsModal({
+  data,
+  loading = false,
+  error = null,
+  groupByMonth = false,
+  onClose,
+}: TransactionsModalProps) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const title = data
+    ? `${data.category_name} · ${
+        data.period.length === 4 ? data.period : formatMonthLabel(data.period)
+      }`
+    : "Buchungen";
+
+  const groups =
+    data && groupByMonth ? groupTransactionsByMonth(data.items) : null;
+
+  return (
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        className="modal-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tx-modal-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="modal-header">
+          <div>
+            <h2 id="tx-modal-title">{title}</h2>
+            <p className="modal-subtitle">Einzelbuchungen</p>
+          </div>
+          <button type="button" className="chart-close" onClick={onClose}>
+            Schließen
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="loading">Lade Buchungen …</div>
+        ) : error ? (
+          <div className="banner error">{error}</div>
+        ) : !data || data.items.length === 0 ? (
+          <div className="empty-accounts">Keine Buchungen für diesen Zeitraum</div>
+        ) : (
+          <>
+            <div className="tx-table-wrap">
+              <table className="tx-table">
+                <thead>
+                  <tr>
+                    <th>Buchungsdatum</th>
+                    <th>Zahlungsempfänger*in</th>
+                    <th className="num">Betrag (€)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {groups
+                    ? groups.map((group) => (
+                        <Fragment key={group.yearMonth}>
+                          <tr className="tx-month-head">
+                            <td colSpan={3}>{fullMonthLabel(group.yearMonth)}</td>
+                          </tr>
+                          {group.items.map((item, idx) => (
+                            <tr key={`${group.yearMonth}-${item.date}-${item.payee}-${idx}`}>
+                              <td>{formatBookingDate(item.date)}</td>
+                              <td>{item.payee || "—"}</td>
+                              <td className={`num ${item.amount < 0 ? "negative" : "positive"}`}>
+                                {formatEuro(item.amount)}
+                              </td>
+                            </tr>
+                          ))}
+                        </Fragment>
+                      ))
+                    : data.items.map((item, idx) => (
+                        <tr key={`${item.date}-${item.payee}-${idx}`}>
+                          <td>{formatBookingDate(item.date)}</td>
+                          <td>{item.payee || "—"}</td>
+                          <td className={`num ${item.amount < 0 ? "negative" : "positive"}`}>
+                            {formatEuro(item.amount)}
+                          </td>
+                        </tr>
+                      ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="tx-footer">
+              <span>
+                {data.count} Buchung{data.count === 1 ? "" : "en"}
+              </span>
+              <strong>Summe Ausgänge: {formatEuro(data.total)}</strong>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

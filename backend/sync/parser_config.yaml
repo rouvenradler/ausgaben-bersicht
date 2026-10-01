@@ -51,6 +51,9 @@ assets_iban_column: 2
 assets_detail_value_column: 4
 assets_wkn_column: 5
 
+# Einzelbuchungen aus Monats-Tabs (Gemeinschaft / Rouven / Lena)
+transaction_tab_pattern: "^\\d{4}_\\d{1,2}(?:_[RL])?$"
+
 exclude_categories:
   - Gehalt
   - Wertpapiere

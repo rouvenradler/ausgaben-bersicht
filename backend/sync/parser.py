@@ -40,6 +40,24 @@ class ParsedAssetAccount:
     rate_value: float = 0.0
 
 
+@dataclass
+class ParsedTransaction:
+    year_month: str
+    category: str
+    booking_date: str
+    payee: str
+    amount_cents: int
+    source_tab: str
+    sort_order: int
+
+
+_TX_TAB_RE = re.compile(r"^(\d{4})_(\d{1,2})(?:_([RL]))?$")
+_TX_HEADER_ALIASES = {
+    "booking_date": ("buchungsdatum",),
+    "payee": ("zahlungsempfänger*in", "zahlungsempfängerin", "zahlungsempfänger"),
+    "amount": ("betrag (€)", "betrag", "betrag(€)"),
+    "category": ("kategorie",),
+}
 _ASSET_GROUP_HEADERS = {
     "girokonto": "Girokonto",
     "tagesgeld konto": "Tagesgeld Konto",
@@ -515,3 +533,93 @@ def parse_asset_accounts(
         )
 
     return accounts
+
+
+def _tx_year_month(tab_name: str) -> str | None:
+    match = _TX_TAB_RE.match(tab_name)
+    if not match:
+        return None
+    year, month = match.group(1), int(match.group(2))
+    if month < 1 or month > 12:
+        return None
+    return f"{year}-{month:02d}"
+
+
+def _find_tx_columns(header: list) -> dict[str, int] | None:
+    lowered = {i: str(cell or "").strip().casefold() for i, cell in enumerate(header)}
+    columns: dict[str, int] = {}
+    for key, aliases in _TX_HEADER_ALIASES.items():
+        for idx, label in lowered.items():
+            if label in aliases:
+                columns[key] = idx
+                break
+    required = {"booking_date", "payee", "amount", "category"}
+    if not required.issubset(columns):
+        return None
+    return columns
+
+
+def parse_transaction_tab(
+    tab_name: str,
+    rows: list[list],
+    sort_base: int,
+) -> list[ParsedTransaction]:
+    year_month = _tx_year_month(tab_name)
+    if not year_month or not rows:
+        return []
+
+    header_idx = None
+    columns = None
+    for i, row in enumerate(rows[:5]):
+        found = _find_tx_columns(row)
+        if found:
+            header_idx = i
+            columns = found
+            break
+    if header_idx is None or columns is None:
+        return []
+
+    results: list[ParsedTransaction] = []
+    for offset, row in enumerate(rows[header_idx + 1 :], start=1):
+        category = str(_cell(row, columns["category"]) or "").strip()
+        if not category:
+            continue
+        booking_date = _parse_as_of(_cell(row, columns["booking_date"]))
+        if not booking_date:
+            continue
+        payee = str(_cell(row, columns["payee"]) or "").strip()
+        amount_cents = parse_amount(_cell(row, columns["amount"]))
+        if amount_cents == 0:
+            continue
+        results.append(
+            ParsedTransaction(
+                year_month=year_month,
+                category=category,
+                booking_date=booking_date,
+                payee=payee,
+                amount_cents=amount_cents,
+                source_tab=tab_name,
+                sort_order=sort_base + offset,
+            )
+        )
+    return results
+
+
+def parse_transactions(
+    all_tabs: dict[str, list[list]],
+    config_path: Path,
+) -> list[ParsedTransaction]:
+    config = load_parser_config(config_path)
+    pattern = config.get("transaction_tab_pattern", r"^\d{4}_\d{1,2}(?:_[RL])?$")
+    skip_tabs = set(config.get("skip_tabs", []))
+    parsed: list[ParsedTransaction] = []
+    sort_base = 0
+    for tab_name, rows in sorted(all_tabs.items()):
+        if tab_name in skip_tabs:
+            continue
+        if not re.match(pattern, tab_name):
+            continue
+        batch = parse_transaction_tab(tab_name, rows, sort_base)
+        parsed.extend(batch)
+        sort_base += 10_000
+    return parsed

@@ -3,6 +3,7 @@ import {
   elapsedFraction,
   fetchAssets,
   fetchCategoryMonthly,
+  fetchCategoryTransactions,
   fetchMonths,
   fetchOverview,
   fetchSyncStatus,
@@ -20,17 +21,18 @@ import {
   type AssetsOverview,
   type CategoryMonthlySeries,
   type CategoryRow,
+  type CategoryTransactions,
   type Overview,
   type PeriodScope,
   type SyncStatus,
 } from "./api";
 import {
   AssetsDashboard,
-  CategoryMonthlyChart,
   CategoryTable,
   KpiCard,
   MonthSelector,
   ScopeToggle,
+  TransactionsModal,
 } from "./components";
 
 export default function App() {
@@ -49,6 +51,11 @@ export default function App() {
   const [monthlySeries, setMonthlySeries] = useState<CategoryMonthlySeries | null>(null);
   const [chartLoading, setChartLoading] = useState(false);
   const [chartError, setChartError] = useState<string | null>(null);
+
+  const [txOpen, setTxOpen] = useState(false);
+  const [txData, setTxData] = useState<CategoryTransactions | null>(null);
+  const [txLoading, setTxLoading] = useState(false);
+  const [txError, setTxError] = useState<string | null>(null);
 
   const scopedPeriods = useMemo(
     () => periodsForScope(periods, scope),
@@ -209,16 +216,43 @@ export default function App() {
       setSelectedCategoryId(null);
       setMonthlySeries(null);
       setChartError(null);
+      setChartLoading(false);
       return;
     }
     setSelectedCategoryId(row.category_id);
     setSelectedColor(color);
+    setMonthlySeries(null);
+    setChartError(null);
+    setChartLoading(true);
   };
 
   const onCloseChart = () => {
     setSelectedCategoryId(null);
     setMonthlySeries(null);
     setChartError(null);
+  };
+
+  const onSelectSpent = async (row: CategoryRow) => {
+    if (!period) return;
+    setTxOpen(true);
+    setTxLoading(true);
+    setTxError(null);
+    setTxData(null);
+    try {
+      const data = await fetchCategoryTransactions(row.category_id, period);
+      setTxData(data);
+    } catch (e) {
+      setTxError(e instanceof Error ? e.message : "Buchungen nicht verfügbar");
+    } finally {
+      setTxLoading(false);
+    }
+  };
+
+  const onCloseTx = () => {
+    setTxOpen(false);
+    setTxData(null);
+    setTxError(null);
+    setTxLoading(false);
   };
 
   const { expenses, investments } = overview
@@ -294,7 +328,9 @@ export default function App() {
 
           <section className="panel">
             <h2>Ausgaben nach Kategorie</h2>
-            <p className="panel-hint">Kategorie anklicken für Monatsverlauf</p>
+            <p className="panel-hint">
+              Ist-Wert für Buchungen · Trend-Symbol für Monatsverlauf
+            </p>
             <CategoryTable
               rows={expenses}
               fraction={fraction}
@@ -302,6 +338,14 @@ export default function App() {
               footerLabel="Summe Ausgaben"
               selectedCategoryId={selectedCategoryId}
               onSelectCategory={onSelectCategory}
+              onSelectSpent={onSelectSpent}
+              chartSeries={monthlySeries}
+              chartYear={chartYear}
+              chartColor={selectedColor}
+              chartHighlightMonth={highlightMonth}
+              chartLoading={chartLoading}
+              chartError={chartError}
+              onCloseChart={onCloseChart}
             />
           </section>
 
@@ -315,29 +359,25 @@ export default function App() {
                 footerLabel="Summe Geldanlagen"
                 selectedCategoryId={selectedCategoryId}
                 onSelectCategory={onSelectCategory}
+                onSelectSpent={onSelectSpent}
+                chartSeries={monthlySeries}
+                chartYear={chartYear}
+                chartColor={selectedColor}
+                chartHighlightMonth={highlightMonth}
+                chartLoading={chartLoading}
+                chartError={chartError}
+                onCloseChart={onCloseChart}
               />
             </section>
           )}
 
-          {selectedCategoryId != null && (monthlySeries || chartLoading || chartError) && (
-            <CategoryMonthlyChart
-              series={
-                monthlySeries ?? {
-                  category_id: selectedCategoryId,
-                  category_name: "…",
-                  year: chartYear,
-                  months: Array.from({ length: 12 }, (_, i) => ({
-                    year_month: `${chartYear}-${String(i + 1).padStart(2, "0")}`,
-                    budget: 0,
-                    spent: 0,
-                  })),
-                }
-              }
-              color={selectedColor}
-              highlightMonth={highlightMonth}
-              loading={chartLoading && !monthlySeries}
-              error={chartError}
-              onClose={onCloseChart}
+          {txOpen && (
+            <TransactionsModal
+              data={txData}
+              loading={txLoading}
+              error={txError}
+              groupByMonth={isYearPeriod(period)}
+              onClose={onCloseTx}
             />
           )}
         </>

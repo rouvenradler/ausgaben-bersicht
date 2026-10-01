@@ -70,6 +70,33 @@ export async function fetchCategoryMonthly(
   return res.json();
 }
 
+export interface CategoryTransaction {
+  date: string;
+  payee: string;
+  amount: number;
+  year_month: string;
+}
+
+export interface CategoryTransactions {
+  category_id: number;
+  category_name: string;
+  period: string;
+  count: number;
+  total: number;
+  items: CategoryTransaction[];
+}
+
+export async function fetchCategoryTransactions(
+  categoryId: number,
+  period: string,
+): Promise<CategoryTransactions> {
+  const res = await fetch(
+    `${API}/categories/${categoryId}/transactions?period=${encodeURIComponent(period)}`,
+  );
+  if (!res.ok) throw new Error("Buchungen konnten nicht geladen werden");
+  return res.json();
+}
+
 export async function fetchSyncStatus(): Promise<SyncStatus> {
   const res = await fetch(`${API}/sync/status`);
   if (!res.ok) throw new Error("Sync-Status nicht verfügbar");

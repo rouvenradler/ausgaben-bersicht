@@ -153,6 +153,39 @@ def category_monthly(category_id: int, year: str, request: Request):
     }
 
 
+@router.get("/categories/{category_id}/transactions")
+def category_transactions(category_id: int, period: str, request: Request):
+    is_year = len(period) == 4 and period.isdigit()
+    is_month = len(period) == 7 and period[4] == "-" and period[:4].isdigit() and period[5:].isdigit()
+    if not is_year and not is_month:
+        raise HTTPException(status_code=400, detail="period must be YYYY or YYYY-MM")
+
+    repo: Repository = request.app.state.repo
+    category_name = repo.get_category_name(category_id)
+    if not category_name:
+        raise HTTPException(status_code=404, detail="Category not found")
+
+    rows = repo.list_category_transactions(category_id, period)
+    # Absolutwert der Ausgänge (negative Beträge) zum Abgleich mit Ist (YTD)
+    outflow_total = sum(-row["amount_cents"] for row in rows if row["amount_cents"] < 0)
+    return {
+        "category_id": category_id,
+        "category_name": category_name,
+        "period": period,
+        "count": len(rows),
+        "total": _format_cents(outflow_total),
+        "items": [
+            {
+                "date": row["booking_date"],
+                "payee": row["payee"],
+                "amount": _format_cents(row["amount_cents"]),
+                "year_month": row["year_month"],
+            }
+            for row in rows
+        ],
+    }
+
+
 @router.get("/assets")
 def list_assets(request: Request):
     repo: Repository = request.app.state.repo

@@ -41,6 +41,11 @@ class Repository:
         row = conn.execute("SELECT id FROM categories WHERE name = ?", (name,)).fetchone()
         return int(row["id"])
 
+    def get_or_create_category(self, conn, name: str) -> int:
+        row = conn.execute("SELECT id FROM categories WHERE name = ?", (name,)).fetchone()
+        if row:
+            return int(row["id"])
+        return self.upsert_category(conn, name, 10_000)
     def upsert_monthly_budget(
         self,
         conn,
@@ -302,6 +307,68 @@ class Repository:
                     "as_of": row["as_of"] or "",
                     "rate_kind": row["rate_kind"] or "",
                     "rate_value": float(row["rate_value"] or 0),
+                }
+                for row in rows
+            ]
+
+    def replace_transactions(self, conn, transactions) -> None:
+        conn.execute("DELETE FROM transactions")
+        for item in transactions:
+            category_id = self.get_or_create_category(conn, item.category)
+            conn.execute(
+                """
+                INSERT INTO transactions (
+                    year_month, category_id, booking_date, payee,
+                    amount_cents, source_tab, sort_order
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    item.year_month,
+                    category_id,
+                    item.booking_date,
+                    item.payee,
+                    item.amount_cents,
+                    item.source_tab,
+                    item.sort_order,
+                ),
+            )
+
+    def get_category_name(self, category_id: int) -> str | None:
+        with get_connection(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT name FROM categories WHERE id = ?",
+                (category_id,),
+            ).fetchone()
+            return row["name"] if row else None
+
+    def list_category_transactions(self, category_id: int, period: str) -> list[dict]:
+        """Buchungen einer Kategorie für Monat (YYYY-MM) oder Jahr (YYYY)."""
+        if len(period) == 4 and period.isdigit():
+            where = "t.category_id = ? AND t.year_month LIKE ?"
+            params: tuple = (category_id, f"{period}-%")
+        elif len(period) == 7 and period[4] == "-" and period[:4].isdigit() and period[5:].isdigit():
+            where = "t.category_id = ? AND t.year_month = ?"
+            params = (category_id, period)
+        else:
+            return []
+
+        with get_connection(self.db_path) as conn:
+            rows = conn.execute(
+                f"""
+                SELECT t.booking_date, t.payee, t.amount_cents, t.year_month
+                FROM transactions t
+                WHERE {where}
+                ORDER BY t.booking_date DESC, t.sort_order DESC, t.id DESC
+                """,
+                params,
+            ).fetchall()
+            return [
+                {
+                    "booking_date": row["booking_date"],
+                    "payee": row["payee"] or "",
+                    "amount_cents": int(row["amount_cents"]),
+                    "year_month": row["year_month"],
                 }
                 for row in rows
             ]

@@ -52,6 +52,21 @@ CREATE TABLE IF NOT EXISTS asset_accounts (
     rate_kind TEXT NOT NULL DEFAULT '',
     rate_value REAL NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    year_month TEXT NOT NULL,
+    category_id INTEGER NOT NULL,
+    booking_date TEXT NOT NULL,
+    payee TEXT NOT NULL DEFAULT '',
+    amount_cents INTEGER NOT NULL DEFAULT 0,
+    source_tab TEXT NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (category_id) REFERENCES categories(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_category_period
+    ON transactions (category_id, year_month, booking_date);
 """
 
 

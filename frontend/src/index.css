@@ -462,22 +462,34 @@ body {
   color: var(--muted);
 }
 
-.category-row-clickable {
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.category-row-clickable:hover {
-  background: rgba(255, 255, 255, 0.03);
-}
-
-.category-row-clickable:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-
-.category-row-clickable.selected {
+.category-row-selected {
   background: rgba(59, 130, 246, 0.1);
+}
+
+.chart-expand-row > td {
+  padding: 0.65rem 0.75rem 1rem;
+  background: rgba(59, 130, 246, 0.06);
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.chart-expand-inner {
+  min-width: 0;
+}
+
+.chart-panel-inline {
+  margin: 0;
+  padding: 1rem 1.1rem 1.1rem;
+  background: var(--surface-2);
+  box-shadow: none;
+}
+
+.chart-panel-inline .chart-header {
+  margin-bottom: 0.85rem;
+}
+
+.chart-panel-inline .bar-chart {
+  min-height: 200px;
 }
 
 .chart-panel .chart-header {
@@ -709,6 +721,32 @@ td.budget {
   font-weight: 700;
 }
 
+.trend-btn {
+  border: 1px solid transparent;
+  padding: 0;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+
+.trend-btn:hover {
+  border-color: rgba(59, 130, 246, 0.45);
+  transform: translateY(-1px);
+}
+
+.trend-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.trend-btn.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+}
+
 .trend-up {
   color: var(--over);
   background: rgba(239, 68, 68, 0.12);
@@ -800,4 +838,138 @@ tfoot .total-row .cat-name {
   text-align: center;
   font-size: 0.82rem;
   color: var(--muted);
+}
+
+.spent-btn {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  padding: 0.15rem 0.35rem;
+  margin: -0.15rem -0.35rem;
+  border-radius: 6px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(139, 156, 179, 0.45);
+  text-underline-offset: 0.2em;
+}
+
+.spent-btn:hover {
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--text);
+  text-decoration-color: var(--accent);
+}
+
+.spent-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(2, 6, 23, 0.72);
+}
+
+.modal-dialog {
+  width: min(720px, 100%);
+  max-height: min(80vh, 820px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+  padding: 1.1rem 1.2rem 1rem;
+}
+
+.modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--text);
+}
+
+.modal-subtitle {
+  margin: 0.3rem 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.tx-table-wrap {
+  overflow: auto;
+  min-height: 0;
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.tx-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.tx-table th,
+.tx-table td {
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.tx-table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  z-index: 1;
+}
+
+.tx-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tx-month-head td {
+  background: rgba(59, 130, 246, 0.08);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  border-bottom-color: transparent;
+  padding-top: 0.7rem;
+  padding-bottom: 0.45rem;
+}
+
+.tx-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.85rem;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.tx-footer strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
