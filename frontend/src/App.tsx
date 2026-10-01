@@ -7,6 +7,7 @@ import {
   fetchMonths,
   fetchOverview,
   fetchSyncStatus,
+  fetchTotalsMonthly,
   formatEuro,
   formatMonthLabel,
   isYearPeriod,
@@ -25,6 +26,7 @@ import {
   type Overview,
   type PeriodScope,
   type SyncStatus,
+  type TotalsMonthlySeries,
 } from "./api";
 import {
   AssetsDashboard,
@@ -32,6 +34,7 @@ import {
   KpiCard,
   MonthSelector,
   ScopeToggle,
+  TotalsMonthlyChart,
   TransactionsModal,
 } from "./components";
 
@@ -56,6 +59,11 @@ export default function App() {
   const [txData, setTxData] = useState<CategoryTransactions | null>(null);
   const [txLoading, setTxLoading] = useState(false);
   const [txError, setTxError] = useState<string | null>(null);
+
+  const [kpiChartOpen, setKpiChartOpen] = useState(false);
+  const [kpiSeries, setKpiSeries] = useState<TotalsMonthlySeries | null>(null);
+  const [kpiLoading, setKpiLoading] = useState(false);
+  const [kpiError, setKpiError] = useState<string | null>(null);
 
   const scopedPeriods = useMemo(
     () => periodsForScope(periods, scope),
@@ -152,6 +160,36 @@ export default function App() {
     }
   }, [selectedCategoryId, chartYear, loadCategoryChart, scope]);
 
+  const closeKpiChart = useCallback(() => {
+    setKpiChartOpen(false);
+    setKpiSeries(null);
+    setKpiError(null);
+    setKpiLoading(false);
+  }, []);
+
+  const loadKpiChart = useCallback(async (year: string) => {
+    if (!year) return;
+    setKpiLoading(true);
+    setKpiError(null);
+    try {
+      const series = await fetchTotalsMonthly(year);
+      setKpiSeries(series);
+    } catch (e) {
+      setKpiSeries(null);
+      setKpiError(e instanceof Error ? e.message : "Monatsverlauf nicht verfügbar");
+    } finally {
+      setKpiLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (scope === "year" && kpiChartOpen && chartYear) {
+      void loadKpiChart(chartYear);
+    } else if (scope !== "year" && kpiChartOpen) {
+      closeKpiChart();
+    }
+  }, [scope, kpiChartOpen, chartYear, loadKpiChart, closeKpiChart]);
+
   const onPeriodChange = async (next: string) => {
     setPeriod(next);
     setLoading(true);
@@ -173,6 +211,7 @@ export default function App() {
       setScope("assets");
       setSelectedCategoryId(null);
       setMonthlySeries(null);
+      closeKpiChart();
       setLoading(true);
       setError(null);
       try {
@@ -203,6 +242,9 @@ export default function App() {
       await loadData(period, scope);
       if (scope !== "assets" && selectedCategoryId != null && chartYear) {
         await loadCategoryChart(selectedCategoryId, chartYear);
+      }
+      if (scope === "year" && kpiChartOpen && chartYear) {
+        await loadKpiChart(chartYear);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sync fehlgeschlagen");
@@ -253,6 +295,17 @@ export default function App() {
     setTxData(null);
     setTxError(null);
     setTxLoading(false);
+  };
+
+  const onSelectKpiChart = () => {
+    if (kpiChartOpen) {
+      closeKpiChart();
+      return;
+    }
+    setKpiChartOpen(true);
+    setKpiSeries(null);
+    setKpiError(null);
+    setKpiLoading(true);
   };
 
   const { expenses, investments } = overview
@@ -312,7 +365,12 @@ export default function App() {
         <>
           <section className="kpis">
             <KpiCard label="Budget" value={formatEuro(expenseTotals.budget)} />
-            <KpiCard label="Ausgegeben" value={formatEuro(expenseTotals.spent)} />
+            <KpiCard
+              label="Ausgegeben"
+              value={formatEuro(expenseTotals.spent)}
+              selected={kpiChartOpen}
+              onClick={scope === "year" ? onSelectKpiChart : undefined}
+            />
             <KpiCard
               label="Verbleibend"
               value={formatEuro(expenseTotals.remaining)}
@@ -323,13 +381,35 @@ export default function App() {
               value={formatEuro(income)}
               sub={isYearPeriod(period) ? "Summe im Jahr" : "Summe im Monat"}
               variant="ok"
+              selected={kpiChartOpen}
+              onClick={scope === "year" ? onSelectKpiChart : undefined}
             />
           </section>
+
+          {scope === "year" && kpiChartOpen && (kpiSeries || kpiLoading || kpiError) && (
+            <TotalsMonthlyChart
+              series={
+                kpiSeries ?? {
+                  year: chartYear,
+                  months: Array.from({ length: 12 }, (_, i) => ({
+                    year_month: `${chartYear}-${String(i + 1).padStart(2, "0")}`,
+                    spent: 0,
+                    income: 0,
+                  })),
+                }
+              }
+              loading={kpiLoading && !kpiSeries}
+              error={kpiError}
+              onClose={closeKpiChart}
+            />
+          )}
 
           <section className="panel">
             <h2>Ausgaben nach Kategorie</h2>
             <p className="panel-hint">
-              Ist-Wert für Buchungen · Trend-Symbol für Monatsverlauf
+              {scope === "year"
+                ? "KPI Ausgegeben/Einnahmen für Monatsvergleich · Ist-Wert für Buchungen · Trend für Kategorie-Monatsverlauf"
+                : "Ist-Wert für Buchungen · Trend-Symbol für Monatsverlauf"}
             </p>
             <CategoryTable
               rows={expenses}

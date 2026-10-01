@@ -8,6 +8,7 @@ import {
   type CategoryTransaction,
   type CategoryTransactions,
   type PeriodScope,
+  type TotalsMonthlySeries,
   type Trend,
 } from "./api";
 
@@ -617,15 +618,136 @@ interface KpiProps {
   value: string;
   sub?: string;
   variant?: "default" | "warn" | "over" | "ok";
+  selected?: boolean;
+  onClick?: () => void;
 }
 
-export function KpiCard({ label, value, sub, variant = "default" }: KpiProps) {
+export function KpiCard({
+  label,
+  value,
+  sub,
+  variant = "default",
+  selected = false,
+  onClick,
+}: KpiProps) {
+  const interactive = Boolean(onClick);
+  const className = [
+    "kpi-card",
+    variant,
+    interactive ? "kpi-card-clickable" : "",
+    selected ? "selected" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  if (!interactive) {
+    return (
+      <div className={className}>
+        <span className="kpi-label">{label}</span>
+        <span className="kpi-value">{value}</span>
+        {sub && <span className="kpi-sub">{sub}</span>}
+      </div>
+    );
+  }
+
   return (
-    <div className={`kpi-card ${variant}`}>
+    <button
+      type="button"
+      className={className}
+      onClick={onClick}
+      aria-pressed={selected}
+      title={`${label}: Monatsverlauf anzeigen`}
+    >
       <span className="kpi-label">{label}</span>
       <span className="kpi-value">{value}</span>
       {sub && <span className="kpi-sub">{sub}</span>}
-    </div>
+    </button>
+  );
+}
+
+interface TotalsChartProps {
+  series: TotalsMonthlySeries;
+  loading?: boolean;
+  error?: string | null;
+  onClose: () => void;
+}
+
+const SPENT_COLOR = "#ef4444";
+
+export function TotalsMonthlyChart({
+  series,
+  loading = false,
+  error = null,
+  onClose,
+}: TotalsChartProps) {
+  const maxValue = Math.max(
+    ...series.months.map((m) => Math.max(m.spent, m.income)),
+    1,
+  );
+  const subtitle = `Ausgegeben vs. Einnahmen · Jahr ${series.year}`;
+
+  return (
+    <section className="panel chart-panel totals-chart-panel">
+      <div className="chart-header">
+        <div>
+          <h2>Monatsvergleich</h2>
+          <p className="chart-subtitle">{subtitle}</p>
+        </div>
+        <button type="button" className="chart-close" onClick={onClose} aria-label="Diagramm schließen">
+          Schließen
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="loading">Lade Monatsverlauf …</div>
+      ) : error ? (
+        <div className="banner error">{error}</div>
+      ) : (
+        <>
+          <div className="bar-chart" role="img" aria-label={subtitle}>
+            {series.months.map((m) => {
+              const spentPct = (m.spent / maxValue) * 100;
+              const incomePct = (m.income / maxValue) * 100;
+              const over = m.income > 0 && m.spent > m.income + 0.005;
+              return (
+                <div
+                  key={m.year_month}
+                  className="bar-col"
+                  title={`${formatMonthLabel(m.year_month)}: Ausgegeben ${formatEuro(m.spent)} · Einnahmen ${formatEuro(m.income)}`}
+                >
+                  <div className="bar-track">
+                    {m.income > 0 && (
+                      <div
+                        className="bar-income"
+                        style={{ height: `${incomePct}%` }}
+                      />
+                    )}
+                    <div
+                      className={`bar-spent${over ? " over" : ""}`}
+                      style={{
+                        height: `${spentPct}%`,
+                        backgroundColor: over ? undefined : SPENT_COLOR,
+                      }}
+                    />
+                  </div>
+                  <span className="bar-label">{shortMonthLabel(m.year_month)}</span>
+                  <span className="bar-value">{m.spent > 0 ? formatEuro(m.spent) : "–"}</span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="chart-legend">
+            <span>
+              <i className="legend-swatch spent" style={{ backgroundColor: SPENT_COLOR }} />{" "}
+              Ausgegeben
+            </span>
+            <span>
+              <i className="legend-swatch income" /> Einnahmen
+            </span>
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 

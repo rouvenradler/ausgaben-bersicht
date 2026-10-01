@@ -175,6 +175,49 @@ class Repository:
             "months": months,
         }
 
+    def get_totals_monthly_series(
+        self,
+        year: str,
+        income_labels: frozenset[str],
+        investment_names: frozenset[str],
+    ) -> dict:
+        """Monats-Summen für Ausgaben und Einnahmen eines Jahres (Vergleich)."""
+        with get_connection(self.db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT mb.year_month, c.name AS category_name, mb.spent_cents
+                FROM monthly_budgets mb
+                JOIN categories c ON c.id = mb.category_id
+                WHERE mb.year_month LIKE ?
+                """,
+                (f"{year}-%",),
+            ).fetchall()
+
+        spent_by_month: dict[str, int] = {f"{year}-{m:02d}": 0 for m in range(1, 13)}
+        income_by_month: dict[str, int] = {f"{year}-{m:02d}": 0 for m in range(1, 13)}
+        for row in rows:
+            name = row["category_name"]
+            ym = row["year_month"]
+            if ym not in spent_by_month:
+                continue
+            spent = int(row["spent_cents"])
+            if name in income_labels:
+                income_by_month[ym] += spent
+            elif name not in investment_names:
+                spent_by_month[ym] += spent
+
+        return {
+            "year": year,
+            "months": [
+                {
+                    "year_month": ym,
+                    "spent_cents": spent_by_month[ym],
+                    "income_cents": income_by_month[ym],
+                }
+                for ym in sorted(spent_by_month)
+            ],
+        }
+
     @staticmethod
     def _rows_to_budgets(rows) -> list[CategoryBudget]:
         return [

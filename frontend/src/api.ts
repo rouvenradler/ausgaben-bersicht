@@ -70,6 +70,25 @@ export async function fetchCategoryMonthly(
   return res.json();
 }
 
+export interface TotalsMonthPoint {
+  year_month: string;
+  spent: number;
+  income: number;
+}
+
+export interface TotalsMonthlySeries {
+  year: string;
+  months: TotalsMonthPoint[];
+}
+
+export async function fetchTotalsMonthly(year: string): Promise<TotalsMonthlySeries> {
+  const res = await fetch(
+    `${API}/totals/monthly?year=${encodeURIComponent(year)}`,
+  );
+  if (!res.ok) throw new Error("Monatsverlauf konnte nicht geladen werden");
+  return res.json();
+}
+
 export interface CategoryTransaction {
   date: string;
   payee: string;

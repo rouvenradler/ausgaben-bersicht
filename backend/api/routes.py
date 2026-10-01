@@ -14,6 +14,7 @@ router = APIRouter(prefix="/api")
 # größeren der beiden Monatswerte) gelten als "gleichbleibend".
 _TREND_THRESHOLD = 0.05
 _DEFAULT_INCOME_LABELS = frozenset({"Einnahmen"})
+_INVESTMENT_NAMES = frozenset({"Geldanlage Rouven", "Geldanlage Lena"})
 
 
 def _format_cents(cents: int) -> float:
@@ -147,6 +148,30 @@ def category_monthly(category_id: int, year: str, request: Request):
                 "year_month": m["year_month"],
                 "budget": _format_cents(m["budget_cents"]),
                 "spent": _format_cents(m["spent_cents"]),
+            }
+            for m in series["months"]
+        ],
+    }
+
+
+@router.get("/totals/monthly")
+def totals_monthly(year: str, request: Request):
+    if not (len(year) == 4 and year.isdigit()):
+        raise HTTPException(status_code=400, detail="year must be YYYY")
+
+    repo: Repository = request.app.state.repo
+    series = repo.get_totals_monthly_series(
+        year,
+        income_labels=_income_labels(request),
+        investment_names=_INVESTMENT_NAMES,
+    )
+    return {
+        "year": series["year"],
+        "months": [
+            {
+                "year_month": m["year_month"],
+                "spent": _format_cents(m["spent_cents"]),
+                "income": _format_cents(m["income_cents"]),
             }
             for m in series["months"]
         ],
